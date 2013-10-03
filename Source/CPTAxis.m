@@ -15,15 +15,12 @@
 #import "CPTLineCap.h"
 #import "CPTLineStyle.h"
 #import "CPTMutablePlotRange.h"
-#import "CPTPlatformSpecificCategories.h"
 #import "CPTPlotArea.h"
 #import "CPTPlotSpace.h"
 #import "CPTShadow.h"
 #import "CPTTextLayer.h"
 #import "CPTUtilities.h"
-#import "CPTUtilities.h"
 #import "NSCoderExtensions.h"
-#import "NSDecimalNumberExtensions.h"
 
 /** @defgroup axisAnimation Axes
  *  @brief Axis properties that can be animated using Core Animation.
@@ -38,11 +35,12 @@
 @interface CPTAxis()
 
 @property (nonatomic, readwrite, assign) BOOL needsRelabel;
-@property (nonatomic, readwrite, assign) __cpt_weak CPTGridLines *minorGridLines;
-@property (nonatomic, readwrite, assign) __cpt_weak CPTGridLines *majorGridLines;
+@property (nonatomic, readwrite, cpt_weak_property) __cpt_weak CPTGridLines *minorGridLines;
+@property (nonatomic, readwrite, cpt_weak_property) __cpt_weak CPTGridLines *majorGridLines;
 @property (nonatomic, readwrite, assign) BOOL labelFormatterChanged;
 @property (nonatomic, readwrite, assign) BOOL minorLabelFormatterChanged;
 @property (nonatomic, readwrite, retain) NSMutableArray *mutableBackgroundLimitBands;
+@property (nonatomic, readonly) CGFloat tickOffset;
 
 -(void)generateFixedIntervalMajorTickLocations:(NSSet **)newMajorLocations minorTickLocations:(NSSet **)newMinorLocations;
 -(void)autoGenerateMajorTickLocations:(NSSet **)newMajorLocations minorTickLocations:(NSSet **)newMinorLocations;
@@ -50,8 +48,10 @@
 -(NSSet *)filteredTickLocations:(NSSet *)allLocations;
 -(void)updateAxisLabelsAtLocations:(NSSet *)locations inRange:(CPTPlotRange *)labeledRange useMajorAxisLabels:(BOOL)useMajorAxisLabels;
 -(void)updateCustomTickLabels;
+-(void)updateMajorTickLabelOffsets;
+-(void)updateMinorTickLabelOffsets;
 
-double niceNum(double x, BOOL round);
+NSDecimal niceNum(NSDecimal x);
 
 @end
 
@@ -131,6 +131,8 @@ double niceNum(double x, BOOL round);
 
 /** @property CPTTextStyle *titleTextStyle
  *  @brief The text style used to draw the axis title text.
+ *
+ *  Assigning a new value to this property also sets the value of the @ref attributedTitle property to @nil.
  **/
 @synthesize titleTextStyle;
 
@@ -138,7 +140,7 @@ double niceNum(double x, BOOL round);
  *  @brief The axis title.
  *  If @nil, no title is drawn.
  **/
-@synthesize axisTitle;
+@dynamic axisTitle;
 
 /** @property CGFloat titleOffset
  *  @brief The offset distance between the axis title and the axis line.
@@ -148,8 +150,20 @@ double niceNum(double x, BOOL round);
 
 /** @property NSString *title
  *  @brief A convenience property for setting the text title of the axis.
+ *
+ *  Assigning a new value to this property also sets the value of the @ref attributedTitle property to @nil.
  **/
 @synthesize title;
+
+/** @property NSAttributedString *attributedTitle
+ *  @brief A convenience property for setting the styled text title of the axis.
+ *
+ *  Assigning a new value to this property also sets the value of the @ref title property to the
+ *  same string without formatting information. It also replaces the @ref titleTextStyle with
+ *  a style matching the first position (location @num{0}) of the styled title.
+ *  Default is @nil.
+ **/
+@synthesize attributedTitle;
 
 /** @property CGFloat titleRotation
  *  @brief The rotation angle of the axis title in radians.
@@ -230,7 +244,25 @@ double niceNum(double x, BOOL round);
  **/
 @synthesize minorTickLabelTextStyle;
 
-/** @property NSNumberFormatter *labelFormatter
+/** @property CPTSign tickLabelDirection
+ *  @brief The offset direction for major tick labels.
+ *  The direction is given as the sign that ticks extend along
+ *  the axis (e.g., positive or negative). If the label direction
+ *  is #CPTSignNone (the default), the labels are offset in the
+ *  direction indicated by the @ref tickDirection.
+ **/
+@synthesize tickLabelDirection;
+
+/** @property CPTSign minorTickLabelDirection
+ *  @brief The offset direction for minor tick labels.
+ *  The direction is given as the sign that ticks extend along
+ *  the axis (e.g., positive or negative). If the label direction
+ *  is #CPTSignNone (the default), the labels are offset in the
+ *  direction indicated by the @ref tickDirection.
+ **/
+@synthesize minorTickLabelDirection;
+
+/** @property NSFormatter *labelFormatter
  *  @brief The number formatter used to format the label text.
  *  If you need a non-numerical label, such as a date, you can use a formatter than turns
  *  the numerical plot coordinate into a string (e.g., @quote{Jan 10, 2010}).
@@ -238,7 +270,7 @@ double niceNum(double x, BOOL round);
  **/
 @synthesize labelFormatter;
 
-/** @property NSNumberFormatter *minorTickLabelFormatter
+/** @property NSFormatter *minorTickLabelFormatter
  *  @brief The number formatter used to format the label text of minor ticks.
  *  If you need a non-numerical label, such as a date, you can use a formatter than turns
  *  the numerical plot coordinate into a string (e.g., @quote{Jan 10, 2010}).
@@ -248,6 +280,7 @@ double niceNum(double x, BOOL round);
 
 @synthesize labelFormatterChanged;
 @synthesize minorLabelFormatterChanged;
+@dynamic tickOffset;
 
 /** @property NSSet *axisLabels
  *  @brief The set of axis labels.
@@ -274,6 +307,11 @@ double niceNum(double x, BOOL round);
  **/
 @synthesize labelShadow;
 
+/** @property CPTShadow *minorTickLabelShadow
+ *  @brief The shadow applied to each minor tick axis label.
+ **/
+@synthesize minorTickLabelShadow;
+
 // Major ticks
 
 /** @property NSDecimal majorIntervalLength
@@ -298,7 +336,7 @@ double niceNum(double x, BOOL round);
 @synthesize majorTickLocations;
 
 /** @property NSUInteger preferredNumberOfMajorTicks
- *  @brief The number of ticks that should be targeted when autogenerating positions.
+ *  @brief The number of ticks that should be targeted when auto-generating positions.
  *  This property only applies when the #CPTAxisLabelingPolicyAutomatic or
  *  #CPTAxisLabelingPolicyEqualDivisions policies are in use.
  *  If zero (@num{0}) (the default), Core Plot will choose a reasonable number of ticks.
@@ -355,7 +393,7 @@ double niceNum(double x, BOOL round);
 /** @property NSArray *alternatingBandFills
  *  @brief An array of two or more fills to be drawn between successive major tick marks.
  *
- *  When initializing the fills, provide an NSArray containing any combinination of CPTFill,
+ *  When initializing the fills, provide an NSArray containing any combination of CPTFill,
  *  CPTColor, CPTGradient, and/or CPTImage objects. Blank (transparent) bands can be created
  *  by using an NSNull object in place of some of the CPTFill objects.
  **/
@@ -422,10 +460,13 @@ double niceNum(double x, BOOL round);
  *  - @ref labelAlignment = #CPTAlignmentCenter
  *  - @ref minorTickLabelAlignment = #CPTAlignmentCenter
  *  - @ref title = @nil
+ *  - @ref attributedTitle = @nil
  *  - @ref titleOffset = @num{30.0}
  *  - @ref axisLineStyle = default line style
  *  - @ref majorTickLineStyle = default line style
  *  - @ref minorTickLineStyle = default line style
+ *  - @ref tickLabelDirection = #CPTSignNone
+ *  - @ref minorTickLabelDirection = #CPTSignNone
  *  - @ref majorGridLineStyle = @nil
  *  - @ref minorGridLineStyle= @nil
  *  - @ref axisLineCapMin = @nil
@@ -451,6 +492,7 @@ double niceNum(double x, BOOL round);
  *  - @ref plotArea = @nil
  *  - @ref separateLayers = @NO
  *  - @ref labelShadow = @nil
+ *  - @ref minorTickLabelShadow = @nil
  *  - @ref alternatingBandFills = @nil
  *  - @ref minorGridLines = @nil
  *  - @ref majorGridLines = @nil
@@ -475,10 +517,13 @@ double niceNum(double x, BOOL round);
         labelAlignment              = CPTAlignmentCenter;
         minorTickLabelAlignment     = CPTAlignmentCenter;
         title                       = nil;
+        attributedTitle             = nil;
         titleOffset                 = CPTFloat(30.0);
         axisLineStyle               = [[CPTLineStyle alloc] init];
         majorTickLineStyle          = [[CPTLineStyle alloc] init];
         minorTickLineStyle          = [[CPTLineStyle alloc] init];
+        tickLabelDirection          = CPTSignNone;
+        minorTickLabelDirection     = CPTSignNone;
         majorGridLineStyle          = nil;
         minorGridLineStyle          = nil;
         axisLineCapMin              = nil;
@@ -510,6 +555,7 @@ double niceNum(double x, BOOL round);
         plotArea                           = nil;
         separateLayers                     = NO;
         labelShadow                        = nil;
+        minorTickLabelShadow               = nil;
         visibleRange                       = nil;
         visibleAxisRange                   = nil;
         gridLinesRange                     = nil;
@@ -545,10 +591,13 @@ double niceNum(double x, BOOL round);
         labelAlignment              = theLayer->labelAlignment;
         minorTickLabelAlignment     = theLayer->labelAlignment;
         title                       = [theLayer->title retain];
+        attributedTitle             = [theLayer->attributedTitle retain];
         titleOffset                 = theLayer->titleOffset;
         axisLineStyle               = [theLayer->axisLineStyle retain];
         majorTickLineStyle          = [theLayer->majorTickLineStyle retain];
         minorTickLineStyle          = [theLayer->minorTickLineStyle retain];
+        tickLabelDirection          = theLayer->tickLabelDirection;
+        minorTickLabelDirection     = theLayer->minorTickLabelDirection;
         majorGridLineStyle          = [theLayer->majorGridLineStyle retain];
         minorGridLineStyle          = [theLayer->minorGridLineStyle retain];
         axisLineCapMin              = [theLayer->axisLineCapMin retain];
@@ -574,6 +623,7 @@ double niceNum(double x, BOOL round);
         plotArea                    = theLayer->plotArea;
         separateLayers              = theLayer->separateLayers;
         labelShadow                 = [theLayer->labelShadow retain];
+        minorTickLabelShadow        = [theLayer->minorTickLabelShadow retain];
         visibleRange                = [theLayer->visibleRange retain];
         visibleAxisRange            = [theLayer->visibleAxisRange retain];
         gridLinesRange              = [theLayer->gridLinesRange retain];
@@ -599,6 +649,7 @@ double niceNum(double x, BOOL round);
     [majorTickLocations release];
     [minorTickLocations release];
     [title release];
+    [attributedTitle release];
     [axisLineStyle release];
     [majorTickLineStyle release];
     [minorTickLineStyle release];
@@ -621,6 +672,7 @@ double niceNum(double x, BOOL round);
     [alternatingBandFills release];
     [mutableBackgroundLimitBands release];
     [labelShadow release];
+    [minorTickLabelShadow release];
 
     [super dealloc];
 }
@@ -651,6 +703,8 @@ double niceNum(double x, BOOL round);
     [coder encodeObject:self.axisLineStyle forKey:@"CPTAxis.axisLineStyle"];
     [coder encodeObject:self.majorTickLineStyle forKey:@"CPTAxis.majorTickLineStyle"];
     [coder encodeObject:self.minorTickLineStyle forKey:@"CPTAxis.minorTickLineStyle"];
+    [coder encodeInteger:self.tickLabelDirection forKey:@"CPTAxis.tickLabelDirection"];
+    [coder encodeInteger:self.minorTickLabelDirection forKey:@"CPTAxis.minorTickLabelDirection"];
     [coder encodeObject:self.majorGridLineStyle forKey:@"CPTAxis.majorGridLineStyle"];
     [coder encodeObject:self.minorGridLineStyle forKey:@"CPTAxis.minorGridLineStyle"];
     [coder encodeObject:self.axisLineCapMin forKey:@"CPTAxis.axisLineCapMin"];
@@ -671,6 +725,7 @@ double niceNum(double x, BOOL round);
     [coder encodeObject:self.minorTickAxisLabels forKey:@"CPTAxis.minorTickAxisLabels"];
     [coder encodeObject:self.axisTitle forKey:@"CPTAxis.axisTitle"];
     [coder encodeObject:self.title forKey:@"CPTAxis.title"];
+    [coder encodeObject:self.attributedTitle forKey:@"CPTAxis.attributedTitle"];
     [coder encodeCGFloat:self.titleOffset forKey:@"CPTAxis.titleOffset"];
     [coder encodeCGFloat:self.titleRotation forKey:@"CPTAxis.titleRotation"];
     [coder encodeDecimal:self.titleLocation forKey:@"CPTAxis.titleLocation"];
@@ -684,6 +739,7 @@ double niceNum(double x, BOOL round);
     [coder encodeObject:self.mutableBackgroundLimitBands forKey:@"CPTAxis.mutableBackgroundLimitBands"];
     [coder encodeBool:self.separateLayers forKey:@"CPTAxis.separateLayers"];
     [coder encodeObject:self.labelShadow forKey:@"CPTAxis.labelShadow"];
+    [coder encodeObject:self.minorTickLabelShadow forKey:@"CPTAxis.minorTickLabelShadow"];
     [coder encodeConditionalObject:self.plotArea forKey:@"CPTAxis.plotArea"];
     [coder encodeConditionalObject:self.minorGridLines forKey:@"CPTAxis.minorGridLines"];
     [coder encodeConditionalObject:self.majorGridLines forKey:@"CPTAxis.majorGridLines"];
@@ -707,6 +763,8 @@ double niceNum(double x, BOOL round);
         axisLineStyle               = [[coder decodeObjectForKey:@"CPTAxis.axisLineStyle"] copy];
         majorTickLineStyle          = [[coder decodeObjectForKey:@"CPTAxis.majorTickLineStyle"] copy];
         minorTickLineStyle          = [[coder decodeObjectForKey:@"CPTAxis.minorTickLineStyle"] copy];
+        tickLabelDirection          = (CPTSign)[coder decodeIntegerForKey : @"CPTAxis.tickLabelDirection"];
+        minorTickLabelDirection     = (CPTSign)[coder decodeIntegerForKey : @"CPTAxis.minorTickLabelDirection"];
         majorGridLineStyle          = [[coder decodeObjectForKey:@"CPTAxis.majorGridLineStyle"] copy];
         minorGridLineStyle          = [[coder decodeObjectForKey:@"CPTAxis.minorGridLineStyle"] copy];
         axisLineCapMin              = [[coder decodeObjectForKey:@"CPTAxis.axisLineCapMin"] copy];
@@ -727,6 +785,7 @@ double niceNum(double x, BOOL round);
         minorTickAxisLabels         = [[coder decodeObjectForKey:@"CPTAxis.minorTickAxisLabels"] retain];
         axisTitle                   = [[coder decodeObjectForKey:@"CPTAxis.axisTitle"] retain];
         title                       = [[coder decodeObjectForKey:@"CPTAxis.title"] copy];
+        attributedTitle             = [[coder decodeObjectForKey:@"CPTAxis.attributedTitle"] copy];
         titleOffset                 = [coder decodeCGFloatForKey:@"CPTAxis.titleOffset"];
         titleRotation               = [coder decodeCGFloatForKey:@"CPTAxis.titleRotation"];
         titleLocation               = [coder decodeDecimalForKey:@"CPTAxis.titleLocation"];
@@ -740,6 +799,7 @@ double niceNum(double x, BOOL round);
         mutableBackgroundLimitBands = [[coder decodeObjectForKey:@"CPTAxis.mutableBackgroundLimitBands"] mutableCopy];
         separateLayers              = [coder decodeBoolForKey:@"CPTAxis.separateLayers"];
         labelShadow                 = [[coder decodeObjectForKey:@"CPTAxis.labelShadow"] retain];
+        minorTickLabelShadow        = [[coder decodeObjectForKey:@"CPTAxis.minorTickLabelShadow"] retain];
         plotArea                    = [coder decodeObjectForKey:@"CPTAxis.plotArea"];
         minorGridLines              = [coder decodeObjectForKey:@"CPTAxis.minorGridLines"];
         majorGridLines              = [coder decodeObjectForKey:@"CPTAxis.majorGridLines"];
@@ -938,94 +998,115 @@ double niceNum(double x, BOOL round);
                         break;
                 }
 
-                double interval = niceNum(length / (numTicks - 1), YES);
+                NSDecimal zero = CPTDecimalFromInteger(0);
 
-                // Determine minor interval
-                double minorInterval = interval / minorTicks;
+                NSDecimal majorInterval = CPTDecimalDivide( range.length, CPTDecimalFromUnsignedInteger(numTicks - 1) );
+                majorInterval = niceNum(majorInterval);
+                if ( CPTDecimalLessThan(majorInterval, zero) ) {
+                    majorInterval = CPTDecimalMultiply( majorInterval, CPTDecimalFromInteger(-1) );
+                }
+
+                NSDecimal minorInterval;
+                if ( minorTicks > 1 ) {
+                    minorInterval = CPTDecimalDivide( majorInterval, CPTDecimalFromUnsignedInteger(minorTicks) );
+                }
+                else {
+                    minorInterval = zero;
+                }
 
                 // Calculate actual range limits
-                double minLimit = range.minLimitDouble;
-                double maxLimit = range.maxLimitDouble;
+                NSDecimal minLimit = range.minLimit;
+                NSDecimal maxLimit = range.maxLimit;
 
                 // Determine the initial and final major indexes for the actual visible range
-                NSInteger initialIndex = (NSInteger)floor(minLimit / interval); // can be negative
-                NSInteger finalIndex   = (NSInteger)ceil(maxLimit / interval);  // can be negative
+                NSDecimal idx = CPTDecimalDivide(minLimit, majorInterval);
+                NSDecimalRound(&idx, &idx, 0, NSRoundDown);
+                NSInteger initialIndex = CPTDecimalIntegerValue(idx); // can be negative
+
+                idx = CPTDecimalDivide(maxLimit, majorInterval);
+                NSDecimalRound(&idx, &idx, 0, NSRoundUp);
+                NSInteger finalIndex = CPTDecimalIntegerValue(idx); // can be negative
 
                 // Iterate through the indexes with visible ticks and build the locations sets
                 for ( NSInteger i = initialIndex; i <= finalIndex; i++ ) {
-                    double pointLocation = i * interval;
+                    NSDecimal pointLocation      = CPTDecimalMultiply( majorInterval, CPTDecimalFromInteger(i) );
+                    NSDecimal minorPointLocation = pointLocation;
                     for ( NSUInteger j = 1; j < minorTicks; j++ ) {
-                        double minorPointLocation = pointLocation + minorInterval * j;
-                        if ( minorPointLocation < minLimit ) {
+                        minorPointLocation = CPTDecimalAdd(minorPointLocation, minorInterval);
+
+                        if ( CPTDecimalLessThan(minorPointLocation, minLimit) ) {
                             continue;
                         }
-                        if ( minorPointLocation > maxLimit ) {
+                        if ( CPTDecimalGreaterThan(minorPointLocation, maxLimit) ) {
                             continue;
                         }
-                        [minorLocations addObject:[NSDecimalNumber numberWithDouble:minorPointLocation]];
+                        [minorLocations addObject:[NSDecimalNumber decimalNumberWithDecimal:minorPointLocation]];
                     }
 
-                    if ( pointLocation < minLimit ) {
+                    if ( CPTDecimalLessThan(pointLocation, minLimit) ) {
                         continue;
                     }
-                    if ( pointLocation > maxLimit ) {
+                    if ( CPTDecimalGreaterThan(pointLocation, maxLimit) ) {
                         continue;
                     }
-                    [majorLocations addObject:[NSDecimalNumber numberWithDouble:pointLocation]];
+                    [majorLocations addObject:[NSDecimalNumber decimalNumberWithDecimal:pointLocation]];
                 }
             }
             break;
 
             case CPTScaleTypeLog:
             {
-                // Determine interval value
-                if ( numTicks == 0 ) {
-                    numTicks = 5;
-                }
-
-                length = log10(length);
-                double interval;
-                if ( fabs(length) >= numTicks ) {
-                    interval = niceNum(length / (numTicks - 1), YES);
-                }
-                else {
-                    interval = signbit(length) ? -1.0 : 1.0;
-                }
-                double intervalStep = pow( 10.0, fabs(interval) );
-
-                // Calculate actual range limits
                 double minLimit = range.minLimitDouble;
                 double maxLimit = range.maxLimitDouble;
 
-                // Determine minor interval
-                double minorInterval = intervalStep * pow( 10.0, floor( log10(minLimit) ) ) / minorTicks;
+                if ( (minLimit > 0.0) && (maxLimit > 0.0) ) {
+                    // Determine interval value
+                    if ( numTicks == 0 ) {
+                        numTicks = 5;
+                    }
 
-                // Determine the initial and final major indexes for the actual visible range
-                NSInteger initialIndex = (NSInteger)floor( log10( minLimit / fabs(interval) ) ); // can be negative
-                NSInteger finalIndex   = (NSInteger)ceil( log10( maxLimit / fabs(interval) ) );  // can be negative
+                    double interval;
 
-                // Iterate through the indexes with visible ticks and build the locations sets
-                for ( NSInteger i = initialIndex; i <= finalIndex; i++ ) {
-                    double pointLocation = pow(10.0, i * interval);
-                    for ( NSUInteger j = 1; j < minorTicks; j++ ) {
-                        double minorPointLocation = pointLocation + minorInterval * j;
-                        if ( minorPointLocation < minLimit ) {
+                    length = log10(maxLimit / minLimit);
+
+                    if ( fabs(length) >= numTicks ) {
+                        interval = CPTDecimalDoubleValue( niceNum( CPTDecimalFromDouble( length / (numTicks - 1) ) ) );
+                    }
+                    else {
+                        interval = signbit(length) ? -1.0 : 1.0;
+                    }
+                    double intervalStep = pow( 10.0, fabs(interval) );
+
+                    // Determine minor interval
+                    double minorInterval = intervalStep * pow( 10.0, floor( log10(minLimit) ) ) / minorTicks;
+
+                    // Determine the initial and final major indexes for the actual visible range
+                    NSInteger initialIndex = (NSInteger)floor( log10( minLimit / fabs(interval) ) ); // can be negative
+                    NSInteger finalIndex   = (NSInteger)ceil( log10( maxLimit / fabs(interval) ) );  // can be negative
+
+                    // Iterate through the indexes with visible ticks and build the locations sets
+                    for ( NSInteger i = initialIndex; i <= finalIndex; i++ ) {
+                        double pointLocation = pow(10.0, i * interval);
+                        for ( NSUInteger j = 1; j < minorTicks; j++ ) {
+                            double minorPointLocation = pointLocation + minorInterval * j;
+                            if ( minorPointLocation < minLimit ) {
+                                continue;
+                            }
+                            if ( minorPointLocation > maxLimit ) {
+                                continue;
+                            }
+                            [minorLocations addObject:[NSDecimalNumber numberWithDouble:minorPointLocation]];
+                        }
+                        minorInterval *= intervalStep;
+
+                        if ( pointLocation < minLimit ) {
                             continue;
                         }
-                        if ( minorPointLocation > maxLimit ) {
+                        if ( pointLocation > maxLimit ) {
                             continue;
                         }
-                        [minorLocations addObject:[NSDecimalNumber numberWithDouble:minorPointLocation]];
+                        [majorLocations addObject:[NSDecimalNumber numberWithDouble:pointLocation]];
                     }
-                    minorInterval *= intervalStep;
-
-                    if ( pointLocation < minLimit ) {
-                        continue;
-                    }
-                    if ( pointLocation > maxLimit ) {
-                        continue;
-                    }
-                    [majorLocations addObject:[NSDecimalNumber numberWithDouble:pointLocation]];
                 }
             }
             break;
@@ -1120,58 +1201,50 @@ double niceNum(double x, BOOL round);
  *  @internal
  *  @brief Determines a @quote{nice} number (a multiple of @num{2}, @num{5}, or @num{10}) near the given number.
  *  @param x The number to round.
- *  @param roundNearest If @YES, the result is rounded to nearest nice number, otherwise the result is the smallest nice number greater than or equal to the given number.
  */
-double niceNum(double x, BOOL roundNearest)
+NSDecimal niceNum(NSDecimal x)
 {
-    if ( x == 0.0 ) {
-        return 0.0;
+    NSDecimal zero = CPTDecimalFromInteger(0);
+    NSDecimal minusOne;
+
+    if ( CPTDecimalEquals(x, zero) ) {
+        return zero;
     }
 
-    BOOL xIsNegative = (x < 0.0);
+    BOOL xIsNegative = CPTDecimalLessThan(x, zero);
     if ( xIsNegative ) {
-        x = -x;
+        minusOne = CPTDecimalFromInteger(-1);
+        x        = CPTDecimalMultiply(x, minusOne);
     }
 
-    double exponent     = floor( log10(x) );
-    double fractionPart = x / pow(10.0, exponent);
+    short exponent = (short)floor( log10( CPTDecimalDoubleValue(x) ) );
 
-    double roundedFraction;
+    NSDecimal fractionPart;
+    NSDecimalMultiplyByPowerOf10(&fractionPart, &x, -exponent, NSRoundPlain);
 
-    if ( roundNearest ) {
-        if ( fractionPart < 1.5 ) {
-            roundedFraction = 1.0;
-        }
-        else if ( fractionPart < 3.0 ) {
-            roundedFraction = 2.0;
-        }
-        else if ( fractionPart < 7.0 ) {
-            roundedFraction = 5.0;
-        }
-        else {
-            roundedFraction = 10.0;
-        }
+    NSDecimal roundedFraction;
+
+    if ( CPTDecimalLessThan( fractionPart, CPTDecimalFromDouble(1.5) ) ) {
+        roundedFraction = CPTDecimalFromInteger(1);
+    }
+    else if ( CPTDecimalLessThan( fractionPart, CPTDecimalFromInteger(3) ) ) {
+        roundedFraction = CPTDecimalFromInteger(2);
+    }
+    else if ( CPTDecimalLessThan( fractionPart, CPTDecimalFromInteger(7) ) ) {
+        roundedFraction = CPTDecimalFromInteger(5);
     }
     else {
-        if ( fractionPart <= 1.0 ) {
-            roundedFraction = 1.0;
-        }
-        else if ( fractionPart <= 2.0 ) {
-            roundedFraction = 2.0;
-        }
-        else if ( fractionPart <= 5.0 ) {
-            roundedFraction = 5.0;
-        }
-        else {
-            roundedFraction = 10.0;
-        }
+        roundedFraction = CPTDecimalFromInteger(10);
     }
 
     if ( xIsNegative ) {
-        roundedFraction = -roundedFraction;
+        roundedFraction = CPTDecimalMultiply(roundedFraction, minusOne);
     }
 
-    return roundedFraction * pow(10.0, exponent);
+    NSDecimal roundedNumber;
+    NSDecimalMultiplyByPowerOf10(&roundedNumber, &roundedFraction, exponent, NSRoundPlain);
+
+    return roundedNumber;
 }
 
 /**
@@ -1225,6 +1298,24 @@ double niceNum(double x, BOOL roundNearest)
 
 /// @cond
 
+-(CGFloat)tickOffset
+{
+    CGFloat offset = CPTFloat(0.0);
+
+    switch ( self.tickDirection ) {
+        case CPTSignNone:
+            offset += self.majorTickLength * CPTFloat(0.5);
+            break;
+
+        case CPTSignPositive:
+        case CPTSignNegative:
+            offset += self.majorTickLength;
+            break;
+    }
+
+    return offset;
+}
+
 /**
  *  @internal
  *  @brief Updates the set of axis labels using the given locations.
@@ -1236,11 +1327,13 @@ double niceNum(double x, BOOL roundNearest)
 -(void)updateAxisLabelsAtLocations:(NSSet *)locations inRange:(CPTPlotRange *)labeledRange useMajorAxisLabels:(BOOL)useMajorAxisLabels
 {
     CPTAlignment theLabelAlignment;
+    CPTSign theLabelDirection;
     CGFloat theLabelOffset;
     CGFloat theLabelRotation;
     CPTTextStyle *theLabelTextStyle;
-    NSNumberFormatter *theLabelFormatter;
+    NSFormatter *theLabelFormatter;
     BOOL theLabelFormatterChanged;
+    CPTShadow *theShadow;
 
     if ( useMajorAxisLabels ) {
         if ( [self.delegate respondsToSelector:@selector(axis:shouldUpdateAxisLabelsAtLocations:)] ) {
@@ -1250,11 +1343,13 @@ double niceNum(double x, BOOL roundNearest)
             }
         }
         theLabelAlignment        = self.labelAlignment;
+        theLabelDirection        = self.tickLabelDirection;
         theLabelOffset           = self.labelOffset;
         theLabelRotation         = self.labelRotation;
         theLabelTextStyle        = self.labelTextStyle;
         theLabelFormatter        = self.labelFormatter;
         theLabelFormatterChanged = self.labelFormatterChanged;
+        theShadow                = self.labelShadow;
     }
     else {
         if ( [self.delegate respondsToSelector:@selector(axis:shouldUpdateMinorAxisLabelsAtLocations:)] ) {
@@ -1264,11 +1359,13 @@ double niceNum(double x, BOOL roundNearest)
             }
         }
         theLabelAlignment        = self.minorTickLabelAlignment;
+        theLabelDirection        = self.minorTickLabelDirection;
         theLabelOffset           = self.minorTickLabelOffset;
         theLabelRotation         = self.minorTickLabelRotation;
         theLabelTextStyle        = self.minorTickLabelTextStyle;
         theLabelFormatter        = self.minorTickLabelFormatter;
         theLabelFormatterChanged = self.minorLabelFormatterChanged;
+        theShadow                = self.minorTickLabelShadow;
     }
 
     if ( (locations.count == 0) || !theLabelTextStyle || !theLabelFormatter ) {
@@ -1281,16 +1378,18 @@ double niceNum(double x, BOOL roundNearest)
         return;
     }
 
-    CGFloat offset = theLabelOffset;
-    switch ( self.tickDirection ) {
-        case CPTSignNone:
-            offset += self.majorTickLength / CPTFloat(2.0);
-            break;
+    NSDictionary *textAttributes = [theLabelTextStyle attributes];
+    BOOL hasAttributedFormatter  = ([theLabelFormatter attributedStringForObjectValue:[NSDecimalNumber zero]
+                                                                withDefaultAttributes:textAttributes] != nil);
 
-        case CPTSignPositive:
-        case CPTSignNegative:
-            offset += self.majorTickLength;
-            break;
+    CPTSign direction = self.tickDirection;
+
+    if ( theLabelDirection == CPTSignNone ) {
+        theLabelDirection = direction;
+    }
+
+    if ( (direction == CPTSignNone) || (theLabelDirection == direction) ) {
+        theLabelOffset += self.tickOffset;
     }
 
     [self.plotArea setAxisSetLayersForType:CPTGraphLayerTypeAxisLabels];
@@ -1308,7 +1407,6 @@ double niceNum(double x, BOOL roundNearest)
     CPTAxisLabelGroup *axisLabelGroup = self.plotArea.axisLabelGroup;
     CPTLayer *lastLayer               = nil;
     CPTPlotArea *thePlotArea          = self.plotArea;
-    CPTShadow *theShadow              = self.labelShadow;
 
     for ( NSDecimalNumber *tickLocation in locations ) {
         NSDecimal locationDecimal = tickLocation.decimalValue;
@@ -1334,12 +1432,19 @@ double niceNum(double x, BOOL roundNearest)
         }
 
         newAxisLabel.rotation  = theLabelRotation;
-        newAxisLabel.offset    = offset;
+        newAxisLabel.offset    = theLabelOffset;
         newAxisLabel.alignment = theLabelAlignment;
 
         if ( needsNewContentLayer || theLabelFormatterChanged ) {
-            NSString *labelString       = [theLabelFormatter stringForObjectValue:tickLocation];
-            CPTTextLayer *newLabelLayer = [[CPTTextLayer alloc] initWithText:labelString style:theLabelTextStyle];
+            CPTTextLayer *newLabelLayer;
+            if ( hasAttributedFormatter ) {
+                NSAttributedString *labelString = [theLabelFormatter attributedStringForObjectValue:tickLocation withDefaultAttributes:textAttributes];
+                newLabelLayer = [[CPTTextLayer alloc] initWithAttributedText:labelString];
+            }
+            else {
+                NSString *labelString = [theLabelFormatter stringForObjectValue:tickLocation];
+                newLabelLayer = [[CPTTextLayer alloc] initWithText:labelString style:theLabelTextStyle];
+            }
             [oldAxisLabel.contentLayer removeFromSuperlayer];
             newAxisLabel.contentLayer = newLabelLayer;
 
@@ -1380,7 +1485,12 @@ double niceNum(double x, BOOL roundNearest)
         self.minorLabelFormatterChanged = NO;
     }
 
-    [self setNeedsLayout];
+    if ( useMajorAxisLabels ) {
+        [self updateMajorTickLabels];
+    }
+    else {
+        [self updateMinorTickLabels];
+    }
 }
 
 /// @endcond
@@ -1532,6 +1642,46 @@ double niceNum(double x, BOOL roundNearest)
     }
 }
 
+-(void)updateMajorTickLabelOffsets
+{
+    CPTSign direction      = self.tickDirection;
+    CPTSign labelDirection = self.tickLabelDirection;
+
+    if ( labelDirection == CPTSignNone ) {
+        labelDirection = direction;
+    }
+
+    CGFloat majorOffset = self.labelOffset;
+
+    if ( (direction == CPTSignNone) || (labelDirection == direction) ) {
+        majorOffset += self.tickOffset;
+    }
+
+    for ( CPTAxisLabel *label in self.axisLabels ) {
+        label.offset = majorOffset;
+    }
+}
+
+-(void)updateMinorTickLabelOffsets
+{
+    CPTSign direction      = self.tickDirection;
+    CPTSign labelDirection = self.minorTickLabelDirection;
+
+    if ( labelDirection == CPTSignNone ) {
+        labelDirection = direction;
+    }
+
+    CGFloat minorOffset = self.minorTickLabelOffset;
+
+    if ( (direction == CPTSignNone) || (labelDirection == direction) ) {
+        minorOffset += self.tickOffset;
+    }
+
+    for ( CPTAxisLabel *label in self.minorTickAxisLabels ) {
+        label.offset = minorOffset;
+    }
+}
+
 /// @endcond
 
 /**
@@ -1540,7 +1690,12 @@ double niceNum(double x, BOOL roundNearest)
 -(void)updateMajorTickLabels
 {
     CPTCoordinate orthogonalCoordinate = CPTOrthogonalCoordinate(self.coordinate);
-    CPTSign direction                  = self.tickDirection;
+
+    CPTSign direction = self.tickLabelDirection;
+
+    if ( direction == CPTSignNone ) {
+        direction = self.tickDirection;
+    }
 
     for ( CPTAxisLabel *label in self.axisLabels ) {
         CGPoint tickBasePoint = [self viewPointForCoordinateDecimalNumber:label.tickLocation];
@@ -1554,7 +1709,12 @@ double niceNum(double x, BOOL roundNearest)
 -(void)updateMinorTickLabels
 {
     CPTCoordinate orthogonalCoordinate = CPTOrthogonalCoordinate(self.coordinate);
-    CPTSign direction                  = self.tickDirection;
+
+    CPTSign direction = self.minorTickLabelDirection;
+
+    if ( direction == CPTSignNone ) {
+        direction = self.tickDirection;
+    }
 
     for ( CPTAxisLabel *label in self.minorTickAxisLabels ) {
         CGPoint tickBasePoint = [self viewPointForCoordinateDecimalNumber:label.tickLocation];
@@ -1568,6 +1728,16 @@ double niceNum(double x, BOOL roundNearest)
 -(NSDecimal)defaultTitleLocation
 {
     return CPTDecimalNaN();
+}
+
+/**
+ *  @brief Update the axis title position.
+ **/
+-(void)updateAxisTitle
+{
+    [self.axisTitle positionRelativeToViewPoint:[self viewPointForCoordinateDecimalNumber:self.titleLocation]
+                                  forCoordinate:CPTOrthogonalCoordinate(self.coordinate)
+                                    inDirection:self.tickDirection];
 }
 
 #pragma mark -
@@ -1584,12 +1754,14 @@ double niceNum(double x, BOOL roundNearest)
  **/
 -(void)layoutSublayers
 {
-    [self updateMajorTickLabels];
-    [self updateMinorTickLabels];
-
-    [self.axisTitle positionRelativeToViewPoint:[self viewPointForCoordinateDecimalNumber:self.titleLocation]
-                                  forCoordinate:CPTOrthogonalCoordinate(self.coordinate)
-                                    inDirection:self.tickDirection];
+    if ( self.needsRelabel ) {
+        [self relabel];
+    }
+    else {
+        [self updateMajorTickLabels];
+        [self updateMinorTickLabels];
+    }
+    [self updateAxisTitle];
 }
 
 /// @}
@@ -1622,6 +1794,93 @@ double niceNum(double x, BOOL roundNearest)
         [self.plotArea setNeedsDisplay];
     }
 }
+
+#pragma mark -
+#pragma mark Responder Chain and User interaction
+
+/// @name User Interaction
+/// @{
+
+/**
+ *  @brief Informs the receiver that the user has
+ *  @if MacOnly pressed the mouse button. @endif
+ *  @if iOSOnly touched the screen. @endif
+ *
+ *
+ *  If this axis has a delegate that responds to the
+ *  @link CPTAxisDelegate::axis:labelWasSelected: -axis:labelWasSelected: @endlink and/or
+ *  @link CPTAxisDelegate::axis:labelWasSelected:withEvent: -axis:labelWasSelected:withEvent: @endlink
+ *  methods, the axis labels are searched to find the one containing the @par{interactionPoint}.
+ *  The delegate method will be called and this method returns @YES if the @par{interactionPoint} is within a label.
+ *
+ *  If this axis has a delegate that responds to the
+ *  @link CPTAxisDelegate::axis:minorTickLabelWasSelected: -axis:minorTickLabelWasSelected: @endlink and/or
+ *  @link CPTAxisDelegate::axis:minorTickLabelWasSelected:withEvent: -axis:minorTickLabelWasSelected:withEvent: @endlink
+ *  methods, the minor tick axis labels are searched to find the one containing the @par{interactionPoint}.
+ *  The delegate method will be called and this method returns @YES if the @par{interactionPoint} is within a label.
+ *
+ *  This method returns @NO if the @par{interactionPoint} is outside all of the labels.
+ *
+ *  @param event The OS event.
+ *  @param interactionPoint The coordinates of the interaction.
+ *  @return Whether the event was handled or not.
+ **/
+-(BOOL)pointingDeviceDownEvent:(CPTNativeEvent *)event atPoint:(CGPoint)interactionPoint
+{
+    CPTGraph *theGraph = self.graph;
+
+    if ( !theGraph || self.hidden ) {
+        return NO;
+    }
+
+    id<CPTAxisDelegate> theDelegate = self.delegate;
+
+    // Tick labels
+    if ( [theDelegate respondsToSelector:@selector(axis:labelWasSelected:)] ||
+         [theDelegate respondsToSelector:@selector(axis:labelWasSelected:withEvent:)] ) {
+        for ( CPTAxisLabel *label in self.axisLabels ) {
+            CPTLayer *contentLayer = label.contentLayer;
+            if ( contentLayer && !contentLayer.hidden ) {
+                CGPoint labelPoint = [theGraph convertPoint:interactionPoint toLayer:contentLayer];
+
+                if ( CGRectContainsPoint(contentLayer.bounds, labelPoint) ) {
+                    if ( [theDelegate respondsToSelector:@selector(axis:labelWasSelected:)] ) {
+                        [theDelegate axis:self labelWasSelected:label];
+                    }
+                    if ( [theDelegate respondsToSelector:@selector(axis:labelWasSelected:withEvent:)] ) {
+                        [theDelegate axis:self labelWasSelected:label withEvent:event];
+                    }
+                    return YES;
+                }
+            }
+        }
+    }
+
+    // Minor tick labels
+    if ( [theDelegate respondsToSelector:@selector(axis:minorTickLabelWasSelected:)] ||
+         [theDelegate respondsToSelector:@selector(axis:minorTickLabelWasSelected:withEvent:)] ) {
+        for ( CPTAxisLabel *label in self.minorTickAxisLabels ) {
+            CPTLayer *contentLayer = label.contentLayer;
+            if ( contentLayer && !contentLayer.hidden ) {
+                CGPoint labelPoint = [theGraph convertPoint:interactionPoint toLayer:contentLayer];
+
+                if ( CGRectContainsPoint(contentLayer.bounds, labelPoint) ) {
+                    if ( [theDelegate respondsToSelector:@selector(axis:minorTickLabelWasSelected:)] ) {
+                        [theDelegate axis:self minorTickLabelWasSelected:label];
+                    }
+                    if ( [theDelegate respondsToSelector:@selector(axis:minorTickLabelWasSelected:withEvent:)] ) {
+                        [theDelegate axis:self minorTickLabelWasSelected:label withEvent:event];
+                    }
+                    return YES;
+                }
+            }
+        }
+    }
+
+    return [super pointingDeviceDownEvent:event atPoint:interactionPoint];
+}
+
+/// @}
 
 #pragma mark -
 #pragma mark Accessors
@@ -1660,7 +1919,7 @@ double niceNum(double x, BOOL roundNearest)
             }
         }
 
-        [self setNeedsLayout];
+        [self updateMajorTickLabels];
     }
 }
 
@@ -1674,6 +1933,9 @@ double niceNum(double x, BOOL roundNearest)
         [newLabels retain];
         [minorTickAxisLabels release];
         minorTickAxisLabels = newLabels;
+
+        [self.plotArea updateAxisSetLayersForType:CPTGraphLayerTypeAxisLabels];
+
         if ( minorTickAxisLabels ) {
             CPTAxisLabelGroup *axisLabelGroup = self.plotArea.axisLabelGroup;
             CALayer *lastLayer                = nil;
@@ -1693,7 +1955,7 @@ double niceNum(double x, BOOL roundNearest)
             }
         }
 
-        [self setNeedsLayout];
+        [self updateMinorTickLabels];
     }
 }
 
@@ -1707,11 +1969,11 @@ double niceNum(double x, BOOL roundNearest)
         for ( CPTAxisLabel *axisLabel in self.axisLabels ) {
             CPTLayer *contentLayer = axisLabel.contentLayer;
             if ( [contentLayer isKindOfClass:textLayerClass] ) {
-                [(CPTTextLayer *) contentLayer setTextStyle:labelTextStyle];
+                [(CPTTextLayer *)contentLayer setTextStyle : labelTextStyle];
             }
         }
 
-        [self setNeedsLayout];
+        [self updateMajorTickLabels];
     }
 }
 
@@ -1725,11 +1987,11 @@ double niceNum(double x, BOOL roundNearest)
         for ( CPTAxisLabel *axisLabel in self.minorTickAxisLabels ) {
             CPTLayer *contentLayer = axisLabel.contentLayer;
             if ( [contentLayer isKindOfClass:textLayerClass] ) {
-                [(CPTTextLayer *) contentLayer setTextStyle:minorTickLabelTextStyle];
+                [(CPTTextLayer *)contentLayer setTextStyle : minorTickLabelTextStyle];
             }
         }
 
-        [self setNeedsLayout];
+        [self updateMinorTickLabels];
     }
 }
 
@@ -1747,19 +2009,31 @@ double niceNum(double x, BOOL roundNearest)
             CPTLayer *contentLayer = axisTitle.contentLayer;
             if ( contentLayer ) {
                 [self.plotArea.axisTitleGroup insertSublayer:contentLayer atIndex:[self.plotArea sublayerIndexForAxis:self layerType:CPTGraphLayerTypeAxisTitles]];
+                [self updateAxisTitle];
             }
         }
-        [self setNeedsLayout];
     }
 }
 
 -(CPTAxisTitle *)axisTitle
 {
-    if ( (axisTitle == nil) && (title != nil) ) {
-        CPTAxisTitle *newTitle = [[CPTAxisTitle alloc] initWithText:title textStyle:self.titleTextStyle];
-        newTitle.rotation = self.titleRotation;
-        self.axisTitle    = newTitle;
-        [newTitle release];
+    if ( !axisTitle ) {
+        CPTAxisTitle *newTitle = nil;
+
+        if ( attributedTitle ) {
+            CPTTextLayer *textLayer = [[CPTTextLayer alloc] initWithAttributedText:attributedTitle];
+            newTitle = [[CPTAxisTitle alloc] initWithContentLayer:textLayer];
+            [textLayer release];
+        }
+        else if ( title ) {
+            newTitle = [[CPTAxisTitle alloc] initWithText:title textStyle:self.titleTextStyle];
+        }
+
+        if ( newTitle ) {
+            newTitle.rotation = self.titleRotation;
+            self.axisTitle    = newTitle;
+            [newTitle release];
+        }
     }
     return axisTitle;
 }
@@ -1770,12 +2044,14 @@ double niceNum(double x, BOOL roundNearest)
         [titleTextStyle release];
         titleTextStyle = [newStyle copy];
 
+        [attributedTitle release];
+        attributedTitle = nil;
+
         CPTLayer *contentLayer = self.axisTitle.contentLayer;
         if ( [contentLayer isKindOfClass:[CPTTextLayer class]] ) {
-            [(CPTTextLayer *) contentLayer setTextStyle:titleTextStyle];
+            ( (CPTTextLayer *)contentLayer ).textStyle = titleTextStyle;
+            [self updateAxisTitle];
         }
-
-        [self setNeedsLayout];
     }
 }
 
@@ -1784,9 +2060,7 @@ double niceNum(double x, BOOL roundNearest)
     if ( newOffset != titleOffset ) {
         titleOffset           = newOffset;
         self.axisTitle.offset = titleOffset;
-        [self.axisTitle positionRelativeToViewPoint:[self viewPointForCoordinateDecimalNumber:self.titleLocation]
-                                      forCoordinate:CPTOrthogonalCoordinate(self.coordinate)
-                                        inDirection:self.tickDirection];
+        [self updateAxisTitle];
     }
 }
 
@@ -1795,9 +2069,7 @@ double niceNum(double x, BOOL roundNearest)
     if ( newRotation != titleRotation ) {
         titleRotation           = newRotation;
         self.axisTitle.rotation = titleRotation;
-        [self.axisTitle positionRelativeToViewPoint:[self viewPointForCoordinateDecimalNumber:self.titleLocation]
-                                      forCoordinate:CPTOrthogonalCoordinate(self.coordinate)
-                                        inDirection:self.tickDirection];
+        [self updateAxisTitle];
     }
 }
 
@@ -1810,12 +2082,43 @@ double niceNum(double x, BOOL roundNearest)
             self.axisTitle = nil;
         }
 
+        [attributedTitle release];
+        attributedTitle = nil;
+
         CPTLayer *contentLayer = self.axisTitle.contentLayer;
         if ( [contentLayer isKindOfClass:[CPTTextLayer class]] ) {
-            [(CPTTextLayer *) contentLayer setText:title];
+            ( (CPTTextLayer *)contentLayer ).text = title;
+            [self updateAxisTitle];
+        }
+    }
+}
+
+-(void)setAttributedTitle:(NSAttributedString *)newTitle
+{
+    if ( newTitle != attributedTitle ) {
+        [attributedTitle release];
+        attributedTitle = [newTitle copy];
+
+        [titleTextStyle release];
+        [title release];
+
+        if ( attributedTitle ) {
+            titleTextStyle = [[CPTTextStyle textStyleWithAttributes:[attributedTitle attributesAtIndex:0
+                                                                                        effectiveRange:NULL]] retain];
+            title = [attributedTitle.string copy];
+        }
+        else {
+            titleTextStyle = nil;
+            title          = nil;
+
+            self.axisTitle = nil;
         }
 
-        [self setNeedsLayout];
+        CPTLayer *contentLayer = self.axisTitle.contentLayer;
+        if ( [contentLayer isKindOfClass:[CPTTextLayer class]] ) {
+            ( (CPTTextLayer *)contentLayer ).attributedText = attributedTitle;
+            [self updateAxisTitle];
+        }
     }
 }
 
@@ -1823,7 +2126,7 @@ double niceNum(double x, BOOL roundNearest)
 {
     if ( NSDecimalCompare(&newLocation, &titleLocation) != NSOrderedSame ) {
         titleLocation = newLocation;
-        [self setNeedsLayout];
+        [self updateAxisTitle];
     }
 }
 
@@ -1883,7 +2186,7 @@ double niceNum(double x, BOOL roundNearest)
 
 -(void)setMinorTickLocations:(NSSet *)newLocations
 {
-    if ( newLocations != majorTickLocations ) {
+    if ( newLocations != minorTickLocations ) {
         [minorTickLocations release];
         minorTickLocations = [newLocations retain];
         if ( self.separateLayers ) {
@@ -1900,16 +2203,22 @@ double niceNum(double x, BOOL roundNearest)
 -(void)setMajorTickLength:(CGFloat)newLength
 {
     if ( newLength != majorTickLength ) {
-        majorTickLength   = newLength;
-        self.needsRelabel = YES;
+        majorTickLength = newLength;
+
+        [self updateMajorTickLabelOffsets];
+        [self updateMinorTickLabelOffsets];
+
+        [self setNeedsDisplay];
+        [self updateMajorTickLabels];
+        [self updateMinorTickLabels];
     }
 }
 
 -(void)setMinorTickLength:(CGFloat)newLength
 {
     if ( newLength != minorTickLength ) {
-        minorTickLength   = newLength;
-        self.needsRelabel = YES;
+        minorTickLength = newLength;
+        [self setNeedsDisplay];
     }
 }
 
@@ -1917,6 +2226,8 @@ double niceNum(double x, BOOL roundNearest)
 {
     if ( newOffset != labelOffset ) {
         labelOffset = newOffset;
+
+        [self updateMajorTickLabelOffsets];
         [self updateMajorTickLabels];
     }
 }
@@ -1925,6 +2236,8 @@ double niceNum(double x, BOOL roundNearest)
 {
     if ( newOffset != minorTickLabelOffset ) {
         minorTickLabelOffset = newOffset;
+
+        [self updateMinorTickLabelOffsets];
         [self updateMinorTickLabels];
     }
 }
@@ -1945,7 +2258,7 @@ double niceNum(double x, BOOL roundNearest)
     if ( newRotation != minorTickLabelRotation ) {
         minorTickLabelRotation = newRotation;
         for ( CPTAxisLabel *label in self.minorTickAxisLabels ) {
-            label.rotation = labelRotation;
+            label.rotation = minorTickLabelRotation;
         }
         [self updateMinorTickLabels];
     }
@@ -1954,8 +2267,8 @@ double niceNum(double x, BOOL roundNearest)
 -(void)setLabelAlignment:(CPTAlignment)newAlignment
 {
     if ( newAlignment != labelAlignment ) {
-        labelAlignment    = newAlignment;
-        self.needsRelabel = YES;
+        labelAlignment = newAlignment;
+        [self updateMajorTickLabels];
     }
 }
 
@@ -1963,7 +2276,7 @@ double niceNum(double x, BOOL roundNearest)
 {
     if ( newAlignment != minorTickLabelAlignment ) {
         minorTickLabelAlignment = newAlignment;
-        self.needsRelabel       = YES;
+        [self updateMinorTickLabels];
     }
 }
 
@@ -1975,6 +2288,19 @@ double niceNum(double x, BOOL roundNearest)
         for ( CPTAxisLabel *label in self.axisLabels ) {
             label.contentLayer.shadow = labelShadow;
         }
+        [self updateMajorTickLabels];
+    }
+}
+
+-(void)setMinorTickLabelShadow:(CPTShadow *)newLabelShadow
+{
+    if ( newLabelShadow != minorTickLabelShadow ) {
+        [minorTickLabelShadow release];
+        minorTickLabelShadow = [newLabelShadow retain];
+        for ( CPTAxisLabel *label in self.minorTickAxisLabels ) {
+            label.contentLayer.shadow = minorTickLabelShadow;
+        }
+        [self updateMinorTickLabels];
     }
 }
 
@@ -2142,7 +2468,7 @@ double niceNum(double x, BOOL roundNearest)
     }
 }
 
--(void)setLabelFormatter:(NSNumberFormatter *)newTickLabelFormatter
+-(void)setLabelFormatter:(NSFormatter *)newTickLabelFormatter
 {
     if ( newTickLabelFormatter != labelFormatter ) {
         [labelFormatter release];
@@ -2152,7 +2478,7 @@ double niceNum(double x, BOOL roundNearest)
     }
 }
 
--(void)setMinorTickLabelFormatter:(NSNumberFormatter *)newMinorTickLabelFormatter
+-(void)setMinorTickLabelFormatter:(NSFormatter *)newMinorTickLabelFormatter
 {
     if ( newMinorTickLabelFormatter != minorTickLabelFormatter ) {
         [minorTickLabelFormatter release];
@@ -2172,8 +2498,34 @@ double niceNum(double x, BOOL roundNearest)
 -(void)setTickDirection:(CPTSign)newDirection
 {
     if ( newDirection != tickDirection ) {
-        tickDirection     = newDirection;
-        self.needsRelabel = YES;
+        tickDirection = newDirection;
+
+        [self updateMajorTickLabelOffsets];
+        [self updateMinorTickLabelOffsets];
+
+        [self setNeedsDisplay];
+        [self updateMajorTickLabels];
+        [self updateMinorTickLabels];
+    }
+}
+
+-(void)setTickLabelDirection:(CPTSign)newDirection
+{
+    if ( newDirection != tickLabelDirection ) {
+        tickLabelDirection = newDirection;
+
+        [self updateMajorTickLabelOffsets];
+        [self updateMajorTickLabels];
+    }
+}
+
+-(void)setMinorTickLabelDirection:(CPTSign)newDirection
+{
+    if ( newDirection != minorTickLabelDirection ) {
+        minorTickLabelDirection = newDirection;
+
+        [self updateMinorTickLabelOffsets];
+        [self updateMinorTickLabels];
     }
 }
 

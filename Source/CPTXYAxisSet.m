@@ -1,7 +1,7 @@
 #import "CPTXYAxisSet.h"
 
-#import "CPTDefinitions.h"
 #import "CPTLineStyle.h"
+#import "CPTPathExtensions.h"
 #import "CPTUtilities.h"
 #import "CPTXYAxis.h"
 
@@ -43,11 +43,11 @@
 -(id)initWithFrame:(CGRect)newFrame
 {
     if ( (self = [super initWithFrame:newFrame]) ) {
-        CPTXYAxis *xAxis = [(CPTXYAxis *)[CPTXYAxis alloc] initWithFrame:newFrame];
+        CPTXYAxis *xAxis = [(CPTXYAxis *)[CPTXYAxis alloc] initWithFrame : newFrame];
         xAxis.coordinate    = CPTCoordinateX;
         xAxis.tickDirection = CPTSignNegative;
 
-        CPTXYAxis *yAxis = [(CPTXYAxis *)[CPTXYAxis alloc] initWithFrame:newFrame];
+        CPTXYAxis *yAxis = [(CPTXYAxis *)[CPTXYAxis alloc] initWithFrame : newFrame];
         yAxis.coordinate    = CPTCoordinateY;
         yAxis.tickDirection = CPTSignNegative;
 
@@ -79,7 +79,18 @@
         CGRect borderRect   = CPTAlignRectToUserSpace(context, [self convertRect:superlayer.bounds fromLayer:superlayer]);
 
         [theLineStyle setLineStyleInContext:context];
-        [theLineStyle strokeRect:borderRect inContext:context];
+
+        CGFloat radius = superlayer.cornerRadius;
+
+        if ( radius > CPTFloat(0.0) ) {
+            CGContextBeginPath(context);
+            AddRoundedRectPath(context, borderRect, radius);
+
+            [theLineStyle strokePathInContext:context];
+        }
+        else {
+            [theLineStyle strokeRect:borderRect inContext:context];
+        }
     }
 }
 

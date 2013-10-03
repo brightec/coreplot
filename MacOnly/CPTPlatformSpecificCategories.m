@@ -1,7 +1,8 @@
 #import "CPTPlatformSpecificCategories.h"
 
-#import "CPTUtilities.h"
-#import <AppKit/AppKit.h>
+#import "CPTPlatformSpecificFunctions.h"
+
+#pragma mark CPTLayer
 
 @implementation CPTLayer(CPTPlatformSpecificLayerExtensions)
 
@@ -20,7 +21,8 @@
                                                                              hasAlpha:YES
                                                                              isPlanar:NO
                                                                        colorSpaceName:NSCalibratedRGBColorSpace
-                                                                          bytesPerRow:(NSInteger)boundsSize.width * 4 bitsPerPixel:32];
+                                                                          bytesPerRow:(NSInteger)boundsSize.width * 4
+                                                                         bitsPerPixel:32];
 
     NSGraphicsContext *bitmapContext = [NSGraphicsContext graphicsContextWithBitmapImageRep:layerImage];
     CGContextRef context             = (CGContextRef)[bitmapContext graphicsPort];
@@ -40,7 +42,7 @@
 
 @end
 
-#pragma mark -
+#pragma mark - CPTColor
 
 @implementation CPTColor(CPTPlatformSpecificColorExtensions)
 
@@ -52,6 +54,25 @@
 -(NSColor *)nsColor
 {
     return [NSColor colorWithCIColor:[CIColor colorWithCGColor:self.cgColor]];
+}
+
+@end
+
+#pragma mark - NSAttributedString
+
+@implementation NSAttributedString(CPTPlatformSpecificAttributedStringExtensions)
+
+/** @brief Draws the styled text into the given graphics context.
+ *  @param rect The bounding rectangle in which to draw the text.
+ *  @param context The graphics context to draw into.
+ **/
+-(void)drawInRect:(CGRect)rect inContext:(CGContextRef)context
+{
+    CPTPushCGContext(context);
+
+    [self drawInRect:NSRectFromCGRect(rect)];
+
+    CPTPopCGContext();
 }
 
 @end

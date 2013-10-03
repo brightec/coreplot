@@ -1,6 +1,5 @@
 #import "CPTDefinitions.h"
 #import "CPTPlot.h"
-#import <Foundation/Foundation.h>
 
 /// @file
 
@@ -76,7 +75,6 @@ CPTTradingRangePlotField;
 
 /** @brief @optional Gets a range of fills used with a candlestick plot when close < open for the given plot.
  *  @param plot The trading range plot.
- *  @param indexRange The range of the data indexes of interest.
  *  @param indexRange The range of the data indexes of interest.
  **/
 -(NSArray *)decreaseFillsForTradingRangePlot:(CPTTradingRangePlot *)plot recordIndexRange:(NSRange)indexRange;

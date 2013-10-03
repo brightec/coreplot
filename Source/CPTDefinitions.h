@@ -1,6 +1,3 @@
-#import <Foundation/Foundation.h>
-#import <QuartzCore/QuartzCore.h>
-
 #import <Availability.h>
 #import <TargetConditionals.h>
 
@@ -47,6 +44,16 @@
 #endif
 #define cpt_weak_property assign
 #endif
+
+// Deprecated method attribute
+
+/**
+ *  @def cpt_deprecated
+ *  @hideinitializer
+ *  @brief Marks a method declaration as deprecated.
+ **/
+
+#define cpt_deprecated __attribute__( (deprecated) )
 
 // Type safety defines
 

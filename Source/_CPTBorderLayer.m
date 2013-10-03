@@ -1,10 +1,6 @@
 #import "_CPTBorderLayer.h"
 
 #import "CPTBorderedLayer.h"
-#import "CPTFill.h"
-#import "CPTLineStyle.h"
-#import "CPTPathExtensions.h"
-#import "CPTUtilities.h"
 
 /**
  *  @brief A utility layer used to draw the fill and border of a CPTBorderedLayer.
@@ -97,11 +93,15 @@
 
 -(void)renderAsVectorInContext:(CGContextRef)context
 {
+    if ( self.hidden ) {
+        return;
+    }
+
     CPTBorderedLayer *theMaskedLayer = self.maskedLayer;
 
     if ( theMaskedLayer ) {
         [super renderAsVectorInContext:context];
-        [theMaskedLayer renderBorderedLayer:theMaskedLayer asVectorInContext:context];
+        [theMaskedLayer renderBorderedLayerAsVectorInContext:context];
     }
 }
 
@@ -119,8 +119,20 @@
     CPTBorderedLayer *theMaskedLayer = self.maskedLayer;
 
     if ( theMaskedLayer ) {
+        CGRect newBounds = self.bounds;
+
+        // undo the shadow margin so the masked layer is always the same size
+        if ( self.shadow ) {
+            CGSize sizeOffset = self.shadowMargin;
+
+            newBounds.origin.x    -= sizeOffset.width;
+            newBounds.origin.y    -= sizeOffset.height;
+            newBounds.size.width  += sizeOffset.width * CPTFloat(2.0);
+            newBounds.size.height += sizeOffset.height * CPTFloat(2.0);
+        }
+
         theMaskedLayer.inLayout = YES;
-        theMaskedLayer.frame    = self.bounds;
+        theMaskedLayer.frame    = newBounds;
         theMaskedLayer.inLayout = NO;
     }
 }

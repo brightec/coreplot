@@ -12,10 +12,13 @@
 @property (readwrite, assign, nonatomic) CGFloat fontSize;
 @property (readwrite, copy, nonatomic) CPTColor *color;
 @property (readwrite, assign, nonatomic) CPTTextAlignment textAlignment;
+@property (readwrite, assign, nonatomic) NSLineBreakMode lineBreakMode;
 
 @end
 
 /// @endcond
+
+#pragma mark -
 
 /** @brief Immutable wrapper for various text style properties.
  *
@@ -44,6 +47,11 @@
  **/
 @synthesize textAlignment;
 
+/** @property NSLineBreakMode lineBreakMode
+ *  @brief The line break mode used when laying out the text. Default is @link NSParagraphStyle::NSLineBreakByWordWrapping NSLineBreakByWordWrapping @endlink.
+ **/
+@synthesize lineBreakMode;
+
 #pragma mark -
 #pragma mark Factory Methods
 
@@ -68,6 +76,7 @@
  *  - @ref fontSize = @num{12.0}
  *  - @ref color = opaque black
  *  - @ref textAlignment = #CPTTextAlignmentLeft
+ *  - @ref lineBreakMode = @link NSParagraphStyle::NSLineBreakByWordWrapping NSLineBreakByWordWrapping @endlink
  *
  *  @return The initialized object.
  **/
@@ -78,6 +87,7 @@
         fontSize      = CPTFloat(12.0);
         color         = [[CPTColor blackColor] retain];
         textAlignment = CPTTextAlignmentLeft;
+        lineBreakMode = NSLineBreakByWordWrapping;
     }
     return self;
 }
@@ -106,6 +116,7 @@
     [coder encodeCGFloat:self.fontSize forKey:@"CPTTextStyle.fontSize"];
     [coder encodeObject:self.color forKey:@"CPTTextStyle.color"];
     [coder encodeInt:self.textAlignment forKey:@"CPTTextStyle.textAlignment"];
+    [coder encodeInteger:(NSInteger)self.lineBreakMode forKey:@"CPTTextStyle.lineBreakMode"];
 }
 
 -(id)initWithCoder:(NSCoder *)coder
@@ -115,6 +126,7 @@
         self->fontSize      = [coder decodeCGFloatForKey:@"CPTTextStyle.fontSize"];
         self->color         = [[coder decodeObjectForKey:@"CPTTextStyle.color"] copy];
         self->textAlignment = (CPTTextAlignment)[coder decodeIntForKey : @"CPTTextStyle.textAlignment"];
+        self->lineBreakMode = (NSLineBreakMode)[coder decodeIntegerForKey : @"CPTTextStyle.lineBreakMode"];
     }
     return self;
 }
@@ -134,6 +146,7 @@
     newCopy->color         = [self->color copy];
     newCopy->fontSize      = self->fontSize;
     newCopy->textAlignment = self->textAlignment;
+    newCopy->lineBreakMode = self->lineBreakMode;
     return newCopy;
 }
 
@@ -152,6 +165,7 @@
     newCopy->color         = [self->color copy];
     newCopy->fontSize      = self->fontSize;
     newCopy->textAlignment = self->textAlignment;
+    newCopy->lineBreakMode = self->lineBreakMode;
     return newCopy;
 }
 

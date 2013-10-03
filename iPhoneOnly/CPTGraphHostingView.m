@@ -9,11 +9,11 @@
 /// @cond
 @interface CPTGraphHostingView()
 
-@property (nonatomic, readwrite, cpt_weak_property) __cpt_weak id pinchGestureRecognizer;
+@property (nonatomic, readwrite, cpt_weak_property) __cpt_weak UIPinchGestureRecognizer *pinchGestureRecognizer;
 
 -(void)updateNotifications;
 -(void)graphNeedsRedraw:(NSNotification *)notification;
--(void)handlePinchGesture:(id)aPinchGestureRecognizer;
+-(void)handlePinchGesture:(UIPinchGestureRecognizer *)aPinchGestureRecognizer;
 
 @end
 
@@ -73,7 +73,7 @@
     self.allowPinchScaling = YES;
 
     // This undoes the normal coordinate space inversion that UIViews apply to their layers
-    self.layer.sublayerTransform = CATransform3DMakeScale( (CGFloat)1.0, (CGFloat) - 1.0, (CGFloat)1.0 );
+    self.layer.sublayerTransform = CATransform3DMakeScale( CPTFloat(1.0), CPTFloat(-1.0), CPTFloat(1.0) );
 }
 
 -(id)initWithFrame:(CGRect)frame
@@ -83,16 +83,6 @@
     }
     return self;
 }
-
-/// @endcond
-
-// On iOS, the init method is not called when loading from a XIB
--(void)awakeFromNib
-{
-    [self commonInit];
-}
-
-/// @cond
 
 -(void)dealloc
 {
@@ -105,6 +95,8 @@
 
 #pragma mark -
 #pragma mark NSCoding methods
+
+/// @cond
 
 -(void)encodeWithCoder:(NSCoder *)coder
 {
@@ -121,17 +113,19 @@
 -(id)initWithCoder:(NSCoder *)coder
 {
     if ( (self = [super initWithCoder:coder]) ) {
+        [self commonInit];
+
         collapsesLayers  = [coder decodeBoolForKey:@"CPTGraphHostingView.collapsesLayers"];
-        hostedGraph      = nil;
         self.hostedGraph = [coder decodeObjectForKey:@"CPTGraphHostingView.hostedGraph"]; // setup layers
 
-        allowPinchScaling      = NO;
-        pinchGestureRecognizer = nil;
-
-        self.allowPinchScaling = [coder decodeBoolForKey:@"CPTGraphHostingView.allowPinchScaling"]; // set gesture recognizer if needed
+        if ( [coder containsValueForKey:@"CPTGraphHostingView.allowPinchScaling"] ) {
+            self.allowPinchScaling = [coder decodeBoolForKey:@"CPTGraphHostingView.allowPinchScaling"]; // set gesture recognizer if needed
+        }
     }
     return self;
 }
+
+/// @endcond
 
 #pragma mark -
 #pragma mark Touch handling
@@ -215,7 +209,7 @@
     }
 }
 
--(void)handlePinchGesture:(id)aPinchGestureRecognizer
+-(void)handlePinchGesture:(UIPinchGestureRecognizer *)aPinchGestureRecognizer
 {
     CGPoint interactionPoint = [aPinchGestureRecognizer locationInView:self];
     CPTGraph *theHostedGraph = self.hostedGraph;

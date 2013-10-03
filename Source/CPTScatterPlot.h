@@ -1,6 +1,5 @@
 #import "CPTDefinitions.h"
 #import "CPTPlot.h"
-#import <Foundation/Foundation.h>
 
 /// @file
 
@@ -32,7 +31,7 @@ CPTScatterPlotField;
  **/
 typedef enum _CPTScatterPlotInterpolation {
     CPTScatterPlotInterpolationLinear,    ///< Linear interpolation.
-    CPTScatterPlotInterpolationStepped,   ///< Steps beginnning at data point.
+    CPTScatterPlotInterpolationStepped,   ///< Steps beginning at data point.
     CPTScatterPlotInterpolationHistogram, ///< Steps centered at data point.
     CPTScatterPlotInterpolationCurved     ///< Bezier curve interpolation.
 }

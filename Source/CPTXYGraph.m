@@ -1,6 +1,5 @@
 #import "CPTXYGraph.h"
 
-#import "CPTExceptions.h"
 #import "CPTXYAxis.h"
 #import "CPTXYAxisSet.h"
 #import "CPTXYPlotSpace.h"
@@ -128,7 +127,7 @@
 
 -(CPTAxisSet *)newAxisSet
 {
-    CPTXYAxisSet *newAxisSet = [(CPTXYAxisSet *)[CPTXYAxisSet alloc] initWithFrame:self.bounds];
+    CPTXYAxisSet *newAxisSet = [(CPTXYAxisSet *)[CPTXYAxisSet alloc] initWithFrame : self.bounds];
 
     newAxisSet.xAxis.plotSpace = self.defaultPlotSpace;
     newAxisSet.yAxis.plotSpace = self.defaultPlotSpace;

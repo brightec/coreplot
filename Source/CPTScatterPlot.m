@@ -5,17 +5,16 @@
 #import "CPTLegend.h"
 #import "CPTLineStyle.h"
 #import "CPTMutableNumericData.h"
-#import "CPTNumericData.h"
 #import "CPTPathExtensions.h"
 #import "CPTPlotArea.h"
+#import "CPTPlotRange.h"
 #import "CPTPlotSpace.h"
 #import "CPTPlotSpaceAnnotation.h"
 #import "CPTPlotSymbol.h"
 #import "CPTUtilities.h"
 #import "CPTXYPlotSpace.h"
 #import "NSCoderExtensions.h"
-#import "NSNumberExtensions.h"
-#import <stdlib.h>
+#import <tgmath.h>
 
 /** @defgroup plotAnimationScatterPlot Scatter Plot
  *  @brief Scatter plot properties that can be animated using Core Animation.
@@ -135,7 +134,6 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
         [self exposeBinding:CPTScatterPlotBindingPlotSymbols];
     }
 }
-
 #endif
 
 /// @endcond
@@ -266,7 +264,9 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
 
     // Update plot symbols
     if ( [theDataSource respondsToSelector:@selector(symbolsForScatterPlot:recordIndexRange:)] ) {
-        [self cacheArray:[theDataSource symbolsForScatterPlot:self recordIndexRange:indexRange] forKey:CPTScatterPlotBindingPlotSymbols atRecordIndex:indexRange.location];
+        [self cacheArray:[theDataSource symbolsForScatterPlot:self recordIndexRange:indexRange]
+                  forKey:CPTScatterPlotBindingPlotSymbols
+           atRecordIndex:indexRange.location];
     }
     else if ( [theDataSource respondsToSelector:@selector(symbolForScatterPlot:recordIndex:)] ) {
         id nilObject          = [CPTPlot nilData];
@@ -319,7 +319,9 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
         return;
     }
 
-    if ( self.areaFill || self.areaFill2 || self.dataLineStyle.dashPattern ) {
+    CPTLineStyle *lineStyle = self.dataLineStyle;
+
+    if ( self.areaFill || self.areaFill2 || lineStyle.dashPattern || lineStyle.lineFill ) {
         // show all points to preserve the line dash and area fills
         for ( NSUInteger i = 0; i < dataCount; i++ ) {
             pointDrawFlags[i] = YES;
@@ -452,9 +454,7 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
 
 -(void)calculateViewPoints:(CGPoint *)viewPoints withDrawPointFlags:(BOOL *)drawPointFlags numberOfPoints:(NSUInteger)dataCount
 {
-    CPTPlotArea *thePlotArea   = self.plotArea;
     CPTPlotSpace *thePlotSpace = self.plotSpace;
-    CGPoint originTransformed  = [self convertPoint:self.frame.origin fromLayer:thePlotArea];
 
     // Calculate points
     if ( self.doublePrecisionCache ) {
@@ -470,9 +470,8 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
                 double plotPoint[2];
                 plotPoint[CPTCoordinateX] = x;
                 plotPoint[CPTCoordinateY] = y;
-                viewPoints[i]             = [thePlotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint];
-                viewPoints[i].x          += originTransformed.x;
-                viewPoints[i].y          += originTransformed.y;
+
+                viewPoints[i] = [thePlotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint numberOfCoordinates:2];
             }
         }
     }
@@ -493,10 +492,7 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
                 plotPoint[CPTCoordinateX] = x;
                 plotPoint[CPTCoordinateY] = y;
 
-                CGPoint plotAreaViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:plotPoint];
-                viewPoints[i]    = plotAreaViewPoint;
-                viewPoints[i].x += originTransformed.x;
-                viewPoints[i].y += originTransformed.y;
+                viewPoints[i] = [thePlotSpace plotAreaViewPointForPlotPoint:plotPoint numberOfCoordinates:2];
             }
         }
     }
@@ -563,8 +559,8 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
 -(NSUInteger)indexOfVisiblePointClosestToPlotAreaPoint:(CGPoint)viewPoint
 {
     NSUInteger dataCount = self.cachedDataCount;
-    CGPoint *viewPoints  = malloc( dataCount * sizeof(CGPoint) );
-    BOOL *drawPointFlags = malloc( dataCount * sizeof(BOOL) );
+    CGPoint *viewPoints  = calloc( dataCount, sizeof(CGPoint) );
+    BOOL *drawPointFlags = calloc( dataCount, sizeof(BOOL) );
 
     [self calculatePointsToDraw:drawPointFlags forPlotSpace:(id)self.plotSpace includeVisiblePointsOnly:YES numberOfPoints:dataCount];
     [self calculateViewPoints:viewPoints withDrawPointFlags:drawPointFlags numberOfPoints:dataCount];
@@ -605,14 +601,14 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
         plotPoint[CPTScatterPlotFieldX] = [self cachedDoubleForField:CPTScatterPlotFieldX recordIndex:idx];
         plotPoint[CPTScatterPlotFieldY] = [self cachedDoubleForField:CPTScatterPlotFieldY recordIndex:idx];
 
-        viewPoint = [thePlotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint];
+        viewPoint = [thePlotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint numberOfCoordinates:2];
     }
     else {
         NSDecimal plotPoint[2];
         plotPoint[CPTScatterPlotFieldX] = [self cachedDecimalForField:CPTScatterPlotFieldX recordIndex:idx];
         plotPoint[CPTScatterPlotFieldY] = [self cachedDecimalForField:CPTScatterPlotFieldY recordIndex:idx];
 
-        viewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:plotPoint];
+        viewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:plotPoint numberOfCoordinates:2];
     }
 
     return viewPoint;
@@ -666,11 +662,13 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
     NSInteger firstDrawnPointIndex = [self extremeDrawnPointIndexForFlags:drawPointFlags numberOfPoints:dataCount extremeNumIsLowerBound:YES];
 
     if ( firstDrawnPointIndex != NSNotFound ) {
-        NSRange viewIndexRange = NSMakeRange( (NSUInteger)firstDrawnPointIndex, (NSUInteger)(lastDrawnPointIndex - firstDrawnPointIndex) );
+        NSRange viewIndexRange = NSMakeRange( (NSUInteger)firstDrawnPointIndex, (NSUInteger)(lastDrawnPointIndex - firstDrawnPointIndex + 1) );
+
+        CPTLineStyle *theLineStyle = self.dataLineStyle;
 
         // Draw fills
         NSDecimal theAreaBaseValue;
-        CPTFill *theFill;
+        CPTFill *theFill = nil;
 
         for ( NSUInteger i = 0; i < 2; i++ ) {
             switch ( i ) {
@@ -688,15 +686,17 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
                     break;
             }
             if ( theFill && ( !NSDecimalIsNotANumber(&theAreaBaseValue) ) ) {
-                // clear the plot shadow if any--not needed for fills
-                CGContextSaveGState(context);
-                CGContextSetShadowWithColor(context, CGSizeZero, CPTFloat(0.0), NULL);
+                // clear the plot shadow if any--not needed for fills when the plot has a data line
+                if ( theLineStyle ) {
+                    CGContextSaveGState(context);
+                    CGContextSetShadowWithColor(context, CGSizeZero, CPTFloat(0.0), NULL);
+                }
 
                 NSNumber *xValue = [xValueData sampleValue:(NSUInteger)firstDrawnPointIndex];
                 NSDecimal plotPoint[2];
                 plotPoint[CPTCoordinateX] = [xValue decimalValue];
                 plotPoint[CPTCoordinateY] = theAreaBaseValue;
-                CGPoint baseLinePoint = [self convertPoint:[thePlotSpace plotAreaViewPointForPlotPoint:plotPoint] fromLayer:self.plotArea];
+                CGPoint baseLinePoint = [self convertPoint:[thePlotSpace plotAreaViewPointForPlotPoint:plotPoint numberOfCoordinates:2] fromLayer:self.plotArea];
                 if ( self.alignsPointsToPixels ) {
                     baseLinePoint = CPTAlignIntegralPointToUserSpace(context, baseLinePoint);
                 }
@@ -709,12 +709,13 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
 
                 CGPathRelease(dataLinePath);
 
-                CGContextRestoreGState(context);
+                if ( theLineStyle ) {
+                    CGContextRestoreGState(context);
+                }
             }
         }
 
         // Draw line
-        CPTLineStyle *theLineStyle = self.dataLineStyle;
         if ( theLineStyle ) {
             CGPathRef dataLinePath = [self newDataLinePathForViewPoints:viewPoints indexRange:viewIndexRange baselineYValue:NAN];
             CGContextBeginPath(context);
@@ -764,10 +765,14 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
     CGMutablePathRef dataLinePath                = CGPathCreateMutable();
     CPTScatterPlotInterpolation theInterpolation = self.interpolation;
     BOOL lastPointSkipped                        = YES;
-    CGFloat firstXValue                          = CPTFloat(0.0);
-    CGFloat lastXValue                           = CPTFloat(0.0);
+    CGPoint firstPoint                           = CGPointZero;
+    CGPoint lastPoint                            = CGPointZero;
     NSUInteger lastDrawnPointIndex               = NSMaxRange(indexRange);
-    CGPoint lastControlPoint;
+    CGPoint lastControlPoint                     = CGPointZero;
+
+    if ( lastDrawnPointIndex > 0 ) {
+        lastDrawnPointIndex--;
+    }
 
     for ( NSUInteger i = indexRange.location; i <= lastDrawnPointIndex; i++ ) {
         CGPoint viewPoint = viewPoints[i];
@@ -775,8 +780,8 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
         if ( isnan(viewPoint.x) || isnan(viewPoint.y) ) {
             if ( !lastPointSkipped ) {
                 if ( !isnan(baselineYValue) ) {
-                    CGPathAddLineToPoint(dataLinePath, NULL, lastXValue, baselineYValue);
-                    CGPathAddLineToPoint(dataLinePath, NULL, firstXValue, baselineYValue);
+                    CGPathAddLineToPoint(dataLinePath, NULL, lastPoint.x, baselineYValue);
+                    CGPathAddLineToPoint(dataLinePath, NULL, firstPoint.x, baselineYValue);
                     CGPathCloseSubpath(dataLinePath);
                 }
                 lastPointSkipped = YES;
@@ -786,8 +791,8 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
             if ( lastPointSkipped ) {
                 CGPathMoveToPoint(dataLinePath, NULL, viewPoint.x, viewPoint.y);
                 lastPointSkipped = NO;
-                firstXValue      = viewPoint.x;
-                // Control point used for bezier curves - reset after skipped points
+                firstPoint       = viewPoint;
+                // Control point used for Bezier curves - reset after skipped points
                 lastControlPoint = viewPoint;
             }
             else {
@@ -797,14 +802,14 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
                         break;
 
                     case CPTScatterPlotInterpolationStepped:
-                        CGPathAddLineToPoint(dataLinePath, NULL, viewPoint.x, viewPoints[i - 1].y);
+                        CGPathAddLineToPoint(dataLinePath, NULL, viewPoint.x, lastPoint.y);
                         CGPathAddLineToPoint(dataLinePath, NULL, viewPoint.x, viewPoint.y);
                         break;
 
                     case CPTScatterPlotInterpolationHistogram:
                     {
-                        CGFloat x = (viewPoints[i - 1].x + viewPoints[i].x) / CPTFloat(2.0);
-                        CGPathAddLineToPoint(dataLinePath, NULL, x, viewPoints[i - 1].y);
+                        CGFloat x = (lastPoint.x + viewPoint.x) / CPTFloat(2.0);
+                        CGPathAddLineToPoint(dataLinePath, NULL, x, lastPoint.y);
                         CGPathAddLineToPoint(dataLinePath, NULL, x, viewPoint.y);
                         CGPathAddLineToPoint(dataLinePath, NULL, viewPoint.x, viewPoint.y);
                     }
@@ -812,13 +817,21 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
 
                     case CPTScatterPlotInterpolationCurved:
                     {
-                        // draw cubic bezier curves from viewpoint to viewpoint with control points based on tangents at viewpoints
+                        // draw cubic Bezier curves from viewpoint to viewpoint with control points based on tangents at viewpoints
+                        CGPoint nextPoint;
+                        if ( i < lastDrawnPointIndex ) {
+                            nextPoint = viewPoints[i + 1];
+                        }
+                        else {
+                            nextPoint = viewPoint;
+                        }
+
                         CGPoint cp1, cp2;
 
                         cp1 = lastControlPoint;
                         // for first and last viewpoint after/before skipped viewpoints just let the control point
                         // be at the viewpoint itself - first viewpoint is handled automatically by skipping logic
-                        if ( (i == lastDrawnPointIndex) || isnan(viewPoints[i + 1].x) || isnan(viewPoints[i + 1].y) ) {
+                        if ( (i == lastDrawnPointIndex) || isnan(nextPoint.x) || isnan(nextPoint.y) ) {
                             cp2              = viewPoint;
                             lastControlPoint = cp2;
                         }
@@ -826,33 +839,58 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
                             // Estimate the tangent of viewpoint[i] to be the line between two points,
                             //    partway to viewpoint[i-1] and partway to viewpoint[i+1]
                             // Project the resulting tangent line back to the viewpoint
-                            // Use the endpoints of the tangent as control points in a bezier curve from viewpoint to viewpoint
-                            CGFloat c  = CPTFloat(0.2); // tangent lenght must be in interval [0;1]
-                            CGPoint t1 = CPTPointMake( viewPoint.x - ( (viewPoint.x - viewPoints[i - 1].x) * c ),
-                                                       viewPoint.y - ( (viewPoint.y - viewPoints[i - 1].y) * c ) );
-                            CGPoint t2 = CPTPointMake( viewPoint.x + ( (viewPoints[i + 1].x - viewPoint.x) * c ),
-                                                       viewPoint.y + ( (viewPoints[i + 1].y - viewPoint.y) * c ) );
+                            // Use the endpoints of the tangent as control points in a Bezier curve from viewpoint to viewpoint
+                            const CGFloat c = CPTFloat(0.5); // tangent length must be in interval [0;1]
 
-                            // vector from viewpoint to tangent center
-                            CGPoint center = CPTPointMake( t1.x + ( (t2.x - t1.x) / CPTFloat(2.0) ), t1.y + ( (t2.y - t1.y) / CPTFloat(2.0) ) );
+                            CGPoint t1 = CGPointMake( viewPoint.x - ( (viewPoint.x - lastPoint.x) * c ),
+                                                      viewPoint.y - ( (viewPoint.y - lastPoint.y) * c ) );
+                            CGPoint t2 = CGPointMake( viewPoint.x + ( (nextPoint.x - viewPoint.x) * c ),
+                                                      viewPoint.y + ( (nextPoint.y - viewPoint.y) * c ) );
+
+                            CGFloat scale = CPTFloat(0.0);
+                            CGFloat dist1 = sqrt( squareOfDistanceBetweenPoints(t1, viewPoint) );
+                            CGFloat dist2 = sqrt( squareOfDistanceBetweenPoints(t2, viewPoint) );
+
+                            if ( (dist1 + dist2) != CPTFloat(0.0) ) {
+                                scale = dist1 / (dist1 + dist2);
+                            }
+
+                            // vector from viewpoint to a point on the tangent
+                            CGPoint center = CPTPointMake( t1.x + ( (t2.x - t1.x) * scale ), t1.y + ( (t2.y - t1.y) * scale ) );
                             CGPoint v      = CPTPointMake(center.x - viewPoint.x, center.y - viewPoint.y);
 
                             // project the tangent to the viewpoint
-                            t1.x = t1.x - v.x;
-                            t1.y = t1.y - v.y;
-                            t2.x = t2.x - v.x;
-                            t2.y = t2.y - v.y;
+                            t1.x -= v.x;
+                            t1.y -= v.y;
+                            t2.x -= v.x;
+                            t2.y -= v.y;
 
-                            //            // DEBUG draw the tangent line
-                            //              CGPoint currentPoint = CGPathGetCurrentPoint(dataLinePath);
-                            //              CGPathMoveToPoint(dataLinePath, NULL, t1.x, t1.y);
-                            //              CGPathAddLineToPoint(dataLinePath, NULL, t2.x, t2.y);
-                            //              CGPathMoveToPoint(dataLinePath, NULL, currentPoint.x, currentPoint.y);
-                            //            // DEBUG draw the vector to tangent center
-                            //              currentPoint = CGPathGetCurrentPoint(dataLinePath);
-                            //              CGPathMoveToPoint(dataLinePath, NULL, viewPoint.x, viewPoint.y);
-                            //              CGPathAddLineToPoint(dataLinePath, NULL, viewPoint.x+v.x, viewPoint.y+v.y);
-                            //              CGPathMoveToPoint(dataLinePath, NULL, currentPoint.x, currentPoint.y);
+                            // DEBUG draw the control points
+//                            CGPoint currentPoint = CGPathGetCurrentPoint(dataLinePath);
+
+//                            CGPathMoveToPoint(dataLinePath, NULL, t1.x - CPTFloat(5.0), t1.y);
+//                            CGPathAddLineToPoint(dataLinePath, NULL, t1.x + CPTFloat(5.0), t1.y);
+//                            CGPathMoveToPoint(dataLinePath, NULL, t1.x, t1.y - CPTFloat(5.0));
+//                            CGPathAddLineToPoint(dataLinePath, NULL, t1.x, t1.y + CPTFloat(5.0));
+
+//                            CGPathMoveToPoint(dataLinePath, NULL, t2.x - CPTFloat(3.5), t2.y - CPTFloat(3.5));
+//                            CGPathAddLineToPoint(dataLinePath, NULL, t2.x + CPTFloat(3.5), t2.y + CPTFloat(3.5));
+//                            CGPathMoveToPoint(dataLinePath, NULL, t2.x + CPTFloat(3.5), t2.y - CPTFloat(3.5));
+//                            CGPathAddLineToPoint(dataLinePath, NULL, t2.x - CPTFloat(3.5), t2.y + CPTFloat(3.5));
+
+//                            CGPathMoveToPoint(dataLinePath, NULL, currentPoint.x, currentPoint.y);
+
+                            // DEBUG draw the tangent line
+                            //                            CGPoint currentPoint = CGPathGetCurrentPoint(dataLinePath);
+                            //                            CGPathMoveToPoint(dataLinePath, NULL, t1.x, t1.y);
+                            //                            CGPathAddLineToPoint(dataLinePath, NULL, t2.x, t2.y);
+                            //                            CGPathMoveToPoint(dataLinePath, NULL, currentPoint.x, currentPoint.y);
+                            // DEBUG draw the vector to tangent center
+//                            currentPoint = CGPathGetCurrentPoint(dataLinePath);
+//                            CGPathMoveToPoint(dataLinePath, NULL, viewPoint.x, viewPoint.y);
+//                            CGPathAddLineToPoint(dataLinePath, NULL, viewPoint.x+v.x, viewPoint.y+v.y);
+//                            CGPathMoveToPoint(dataLinePath, NULL, currentPoint.x, currentPoint.y);
+
                             cp2              = t1;
                             lastControlPoint = t2;
                         }
@@ -866,13 +904,13 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
                         break;
                 }
             }
-            lastXValue = viewPoint.x;
+            lastPoint = viewPoint;
         }
     }
 
     if ( !lastPointSkipped && !isnan(baselineYValue) ) {
-        CGPathAddLineToPoint(dataLinePath, NULL, lastXValue, baselineYValue);
-        CGPathAddLineToPoint(dataLinePath, NULL, firstXValue, baselineYValue);
+        CGPathAddLineToPoint(dataLinePath, NULL, lastPoint.x, baselineYValue);
+        CGPathAddLineToPoint(dataLinePath, NULL, firstPoint.x, baselineYValue);
         CGPathCloseSubpath(dataLinePath);
     }
 
@@ -911,17 +949,7 @@ NSString *const CPTScatterPlotBindingPlotSymbols = @"plotSymbols"; ///< Plot sym
         CPTFill *fill2 = self.areaFill2;
 
         if ( fill1 || fill2 ) {
-            CGPathRef swatchPath;
-            CGFloat radius = legend.swatchCornerRadius;
-            if ( radius > 0.0 ) {
-                radius     = MIN( MIN( radius, rect.size.width / CPTFloat(2.0) ), rect.size.height / CPTFloat(2.0) );
-                swatchPath = CreateRoundedRectPath(rect, radius);
-            }
-            else {
-                CGMutablePathRef mutablePath = CGPathCreateMutable();
-                CGPathAddRect(mutablePath, NULL, rect);
-                swatchPath = mutablePath;
-            }
+            CGPathRef swatchPath = CreateRoundedRectPath(CPTAlignIntegralRectToUserSpace(context, rect), legend.swatchCornerRadius);
 
             if ( fill1 && !fill2 ) {
                 CGContextBeginPath(context);

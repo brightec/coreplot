@@ -1,6 +1,3 @@
-#import <Foundation/Foundation.h>
-#import <QuartzCore/QuartzCore.h>
-
 /// @file
 
 @class CPTLineStyle;
@@ -38,6 +35,7 @@ CPTPlotSymbolType;
     CGPathRef customSymbolPath;
     BOOL usesEvenOddClipRule;
     CGLayerRef cachedLayer;
+    CGFloat cachedScale;
     CPTShadow *shadow;
 }
 

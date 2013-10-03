@@ -1,7 +1,5 @@
 #import "CPTMutableTextStyle.h"
 
-#import "CPTColor.h"
-
 /** @brief Mutable wrapper for text style properties.
  *
  *  Use this whenever you need to customize the properties of a text style.
@@ -28,5 +26,10 @@
  *  @brief The paragraph alignment for multi-line text. Default is #CPTTextAlignmentLeft.
  **/
 @dynamic textAlignment;
+
+/** @property NSLineBreakMode lineBreakMode
+ *  @brief The line break mode used when laying out the text. Default is @link NSParagraphStyle::NSLineBreakByWordWrapping NSLineBreakByWordWrapping @endlink.
+ **/
+@dynamic lineBreakMode;
 
 @end

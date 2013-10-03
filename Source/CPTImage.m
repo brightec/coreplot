@@ -3,10 +3,6 @@
 #import "CPTDefinitions.h"
 #import "NSCoderExtensions.h"
 
-#if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
-#import <UIKit/UIKit.h>
-#endif
-
 /// @cond
 // for MacOS 10.6 SDK compatibility
 #if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
@@ -52,12 +48,17 @@
  *  @brief Anchor the tiled image to the context origin?
  *
  *  If @YES, the origin of the tiled image is anchored to the origin of the drawing context.
- *  If @NO, the origin of the tiled image is set to the orgin of rectangle passed to
+ *  If @NO, the origin of the tiled image is set to the origin of the rectangle passed to
  *  @link CPTImage::drawInRect:inContext: -drawInRect:inContext: @endlink.
  *  The default value is @YES.
  *  If @ref tiled is @NO, this property has no effect.
  **/
 @synthesize tileAnchoredToContext;
+
+/** @property BOOL opaque
+ *  @brief If @YES, the image is completely opaque.
+ */
+@dynamic opaque;
 
 #pragma mark -
 #pragma mark Init/Dealloc
@@ -369,7 +370,7 @@
             CFDataRef otherProviderData     = CGDataProviderCopyData(otherProvider);
 
             if ( selfProviderData && otherProviderData ) {
-                equalImages = [(NSData *) selfProviderData isEqualToData:(NSData *)otherProviderData];
+                equalImages = [(NSData *)selfProviderData isEqualToData : (NSData *)otherProviderData];
             }
             else {
                 equalImages = (selfProviderData == otherProviderData);
@@ -409,6 +410,27 @@
 }
 
 /// @endcond
+
+#pragma mark -
+#pragma mark Opacity
+
+-(BOOL)isOpaque
+{
+    BOOL opaqueImage           = NO;
+    CGImageAlphaInfo alphaInfo = CGImageGetAlphaInfo(self.image);
+
+    switch ( alphaInfo ) {
+        case kCGImageAlphaNone:
+        case kCGImageAlphaNoneSkipFirst:
+        case kCGImageAlphaNoneSkipLast:
+            opaqueImage = YES;
+            break;
+
+        default:
+            break;
+    }
+    return opaqueImage;
+}
 
 #pragma mark -
 #pragma mark Accessors
@@ -464,7 +486,7 @@
         CGContextSaveGState(context);
 
         if ( self.isTiled ) {
-            CGContextClipToRect(context, *(CGRect *)&rect);
+            CGContextClipToRect(context, rect);
             if ( !self.tileAnchoredToContext ) {
                 CGContextTranslateCTM(context, rect.origin.x, rect.origin.y);
             }

@@ -72,7 +72,7 @@
         dateFormatter         = [aDateFormatter retain];
         referenceDate         = nil;
         referenceCalendar     = nil;
-        referenceCalendarUnit = 0;
+        referenceCalendarUnit = NSEraCalendarUnit;
     }
     return self;
 }
@@ -151,9 +151,13 @@
  *  @param coordinateValue The time value.
  *  @return The date string.
  **/
--(NSString *)stringForObjectValue:(NSDecimalNumber *)coordinateValue
+-(NSString *)stringForObjectValue:(id)coordinateValue
 {
-    NSInteger componentIncrement = [coordinateValue integerValue];
+    NSInteger componentIncrement = 0;
+
+    if ( [coordinateValue respondsToSelector:@selector(integerValue)] ) {
+        componentIncrement = [coordinateValue integerValue];
+    }
 
     NSDateComponents *dateComponents = [[[NSDateComponents alloc] init] autorelease];
 
@@ -168,6 +172,10 @@
 
         case NSMonthCalendarUnit:
             dateComponents.month = componentIncrement;
+            break;
+
+        case NSWeekCalendarUnit:
+            dateComponents.week = componentIncrement;
             break;
 
         case NSDayCalendarUnit:
@@ -230,6 +238,15 @@
             else {
                 [NSException raise:CPTException format:@"Unsupported calendar unit: NSYearForWeekOfYearCalendarUnit"];
             }
+            break;
+#endif
+#if MAC_OS_X_VERSION_10_7 < MAC_OS_X_VERSION_MAX_ALLOWED || __IPHONE_4_0 < __IPHONE_OS_VERSION_MAX_ALLOWED
+        case NSCalendarCalendarUnit:
+            [NSException raise:CPTException format:@"Unsupported calendar unit: NSCalendarCalendarUnit"];
+            break;
+
+        case NSTimeZoneCalendarUnit:
+            [NSException raise:CPTException format:@"Unsupported calendar unit: NSTimeZoneCalendarUnit"];
             break;
 #endif
         default:

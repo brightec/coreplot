@@ -1,8 +1,5 @@
 #import "CPTPlatformSpecificFunctions.h"
 
-#import "CPTDefinitions.h"
-#import "CPTPlatformSpecificDefines.h"
-
 /** @brief Node in a linked list of graphics contexts.
 **/
 typedef struct _CPTContextNode {
@@ -24,10 +21,10 @@ void CPTPushCGContext(CGContextRef newContext)
 {
     if ( newContext ) {
         CPTContextNode *newNode = malloc( sizeof(CPTContextNode) );
-        (*newNode).context = [NSGraphicsContext currentContext];
+        newNode->context = [NSGraphicsContext currentContext];
         [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithGraphicsPort:newContext flipped:NO]];
-        (*newNode).nextNode = pushedContexts;
-        pushedContexts      = newNode;
+        newNode->nextNode = pushedContexts;
+        pushedContexts    = newNode;
     }
 }
 
@@ -37,8 +34,8 @@ void CPTPushCGContext(CGContextRef newContext)
 void CPTPopCGContext(void)
 {
     if ( pushedContexts ) {
-        [NSGraphicsContext setCurrentContext:(*pushedContexts).context];
-        CPTContextNode *next = (*pushedContexts).nextNode;
+        [NSGraphicsContext setCurrentContext:pushedContexts->context];
+        CPTContextNode *next = pushedContexts->nextNode;
         free(pushedContexts);
         pushedContexts = next;
     }

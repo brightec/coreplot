@@ -1,5 +1,3 @@
-#import <Foundation/Foundation.h>
-
 /// @file
 
 /**
@@ -26,7 +24,7 @@ typedef enum _CPTDataOrder {
 CPTDataOrder;
 
 /**
- *  @brief Struct that describes the encoding of numeric data samples.
+ *  @brief Structure that describes the encoding of numeric data samples.
  **/
 typedef struct _CPTNumericDataType {
     CPTDataTypeFormat dataTypeFormat; ///< Data type format

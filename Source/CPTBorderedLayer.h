@@ -1,5 +1,4 @@
 #import "CPTAnnotationHostLayer.h"
-#import <Foundation/Foundation.h>
 
 @class CPTLineStyle;
 @class CPTFill;
@@ -24,7 +23,7 @@
 
 /// @name Drawing
 /// @{
--(void)renderBorderedLayer:(CPTBorderedLayer *)layer asVectorInContext:(CGContextRef)context;
+-(void)renderBorderedLayerAsVectorInContext:(CGContextRef)context;
 /// @}
 
 @end

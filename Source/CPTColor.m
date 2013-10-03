@@ -2,7 +2,6 @@
 
 #import "CPTColorSpace.h"
 #import "CPTDefinitions.h"
-#import "CPTPlatformSpecificFunctions.h"
 #import "NSCoderExtensions.h"
 
 /** @brief An immutable color.
@@ -18,6 +17,11 @@
  *  @brief The @ref CGColorRef to wrap around.
  **/
 @synthesize cgColor;
+
+/** @property BOOL opaque
+ *  @brief If @YES, the color is completely opaque.
+ */
+@dynamic opaque;
 
 #pragma mark -
 #pragma mark Factory Methods
@@ -344,6 +348,14 @@
 }
 
 #pragma mark -
+#pragma mark Opacity
+
+-(BOOL)isOpaque
+{
+    return CGColorGetAlpha(self.cgColor) >= CPTFloat(1.0);
+}
+
+#pragma mark -
 #pragma mark NSCoding Methods
 
 /// @cond
@@ -355,7 +367,7 @@
     [coder encodeCGColorSpace:CGColorGetColorSpace(theColor) forKey:@"CPTColor.colorSpace"];
 
     size_t numberOfComponents = CGColorGetNumberOfComponents(theColor);
-    [coder encodeInt64:(int64_t) numberOfComponents forKey:@"CPTColor.numberOfComponents"];
+    [coder encodeInt64:(int64_t)numberOfComponents forKey:@"CPTColor.numberOfComponents"];
 
     const CGFloat *colorComponents = CGColorGetComponents(theColor);
 

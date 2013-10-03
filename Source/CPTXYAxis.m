@@ -1,9 +1,6 @@
 #import "CPTXYAxis.h"
 
-#import "CPTAxisLabel.h"
 #import "CPTConstraints.h"
-#import "CPTDefinitions.h"
-#import "CPTExceptions.h"
 #import "CPTFill.h"
 #import "CPTLimitBand.h"
 #import "CPTLineCap.h"
@@ -14,6 +11,7 @@
 #import "CPTUtilities.h"
 #import "CPTXYPlotSpace.h"
 #import "NSCoderExtensions.h"
+#import <tgmath.h>
 
 /// @cond
 @interface CPTXYAxis()
@@ -151,6 +149,8 @@
             break;
 
         default:
+            *lower = NAN;
+            *upper = NAN;
             break;
     }
 }
@@ -165,7 +165,7 @@
     plotPoint[myCoordinate]         = CPTDecimalDoubleValue(coordinateDecimalNumber);
     plotPoint[orthogonalCoordinate] = CPTDecimalDoubleValue(orthogonalCoord);
 
-    return [self convertPoint:[self.plotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint] fromLayer:self.plotArea];
+    return [self convertPoint:[self.plotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint numberOfCoordinates:2] fromLayer:self.plotArea];
 }
 
 -(CGPoint)viewPointForCoordinateDecimalNumber:(NSDecimal)coordinateDecimalNumber
@@ -194,6 +194,17 @@
         }
     }
 
+    if ( isnan(point.x) || isnan(point.y) ) {
+        NSLog( @"[CPTXYAxis viewPointForCoordinateDecimalNumber:%@] was %@", NSDecimalString(&coordinateDecimalNumber, nil), CPTStringFromPoint(point) );
+
+        if ( isnan(point.x) ) {
+            point.x = CPTFloat(0.0);
+        }
+        if ( isnan(point.y) ) {
+            point.y = CPTFloat(0.0);
+        }
+    }
+
     return point;
 }
 
@@ -210,6 +221,16 @@
 
     if ( !lineStyle ) {
         return;
+    }
+
+    CGFloat lineWidth = lineStyle.lineWidth;
+
+    CPTAlignPointFunction alignmentFunction = NULL;
+    if ( ( self.contentsScale > CPTFloat(1.0) ) && (round(lineWidth) == lineWidth) ) {
+        alignmentFunction = CPTAlignIntegralPointToUserSpace;
+    }
+    else {
+        alignmentFunction = CPTAlignPointToUserSpace;
     }
 
     [lineStyle setLineStyleInContext:context];
@@ -235,11 +256,11 @@
                 break;
 
             case CPTSignNegative:
-                endFactor = -CPTFloat(1.0);
+                endFactor = CPTFloat(-1.0);
                 break;
 
             case CPTSignNone:
-                startFactor = -CPTFloat(0.5);
+                startFactor = CPTFloat(-0.5);
                 endFactor   = CPTFloat(0.5);
                 break;
 
@@ -262,8 +283,8 @@
                 NSLog(@"Invalid coordinate in [CPTXYAxis drawTicksInContext:]");
         }
 
-        startViewPoint = CPTAlignPointToUserSpace(context, startViewPoint);
-        endViewPoint   = CPTAlignPointToUserSpace(context, endViewPoint);
+        startViewPoint = alignmentFunction(context, startViewPoint);
+        endViewPoint   = alignmentFunction(context, endViewPoint);
 
         // Add tick line
         CGContextMoveToPoint(context, startViewPoint.x, startViewPoint.y);
@@ -319,9 +340,15 @@
             [range release];
             range = [theVisibleAxisRange mutableCopy];
         }
+        CPTAlignPointFunction alignmentFunction = CPTAlignPointToUserSpace;
         if ( theLineStyle ) {
-            CGPoint startViewPoint = CPTAlignPointToUserSpace(context, [self viewPointForCoordinateDecimalNumber:range.location]);
-            CGPoint endViewPoint   = CPTAlignPointToUserSpace(context, [self viewPointForCoordinateDecimalNumber:range.end]);
+            CGFloat lineWidth = theLineStyle.lineWidth;
+            if ( ( self.contentsScale > CPTFloat(1.0) ) && (round(lineWidth) == lineWidth) ) {
+                alignmentFunction = CPTAlignIntegralPointToUserSpace;
+            }
+
+            CGPoint startViewPoint = alignmentFunction(context, [self viewPointForCoordinateDecimalNumber:range.location]);
+            CGPoint endViewPoint   = alignmentFunction(context, [self viewPointForCoordinateDecimalNumber:range.end]);
             [theLineStyle setLineStyleInContext:context];
             CGContextBeginPath(context);
             CGContextMoveToPoint(context, startViewPoint.x, startViewPoint.y);
@@ -347,13 +374,13 @@
 
         if ( minCap ) {
             NSDecimal endPoint = range.minLimit;
-            CGPoint viewPoint  = CPTAlignPointToUserSpace(context, [self viewPointForCoordinateDecimalNumber:endPoint]);
+            CGPoint viewPoint  = alignmentFunction(context, [self viewPointForCoordinateDecimalNumber:endPoint]);
             [minCap renderAsVectorInContext:context atPoint:viewPoint inDirection:CPTPointMake(-axisDirection.x, -axisDirection.y)];
         }
 
         if ( maxCap ) {
             NSDecimal endPoint = range.maxLimit;
-            CGPoint viewPoint  = CPTAlignPointToUserSpace(context, [self viewPointForCoordinateDecimalNumber:endPoint]);
+            CGPoint viewPoint  = alignmentFunction(context, [self viewPointForCoordinateDecimalNumber:endPoint]);
             [maxCap renderAsVectorInContext:context atPoint:viewPoint inDirection:axisDirection];
         }
     }
@@ -410,7 +437,17 @@
         NSDecimal endPlotPoint[2];
         startPlotPoint[orthogonalCoordinate] = orthogonalRange.location;
         endPlotPoint[orthogonalCoordinate]   = orthogonalRange.end;
-        CGPoint originTransformed = [self convertPoint:self.frame.origin fromLayer:thePlotArea];
+        CGPoint originTransformed = [self convertPoint:self.bounds.origin fromLayer:thePlotArea];
+
+        CGFloat lineWidth = lineStyle.lineWidth;
+
+        CPTAlignPointFunction alignmentFunction = NULL;
+        if ( ( self.contentsScale > CPTFloat(1.0) ) && (round(lineWidth) == lineWidth) ) {
+            alignmentFunction = CPTAlignIntegralPointToUserSpace;
+        }
+        else {
+            alignmentFunction = CPTAlignPointToUserSpace;
+        }
 
         CGContextBeginPath(context);
 
@@ -421,21 +458,22 @@
                 continue;
             }
 
-            startPlotPoint[selfCoordinate] = endPlotPoint[selfCoordinate] = locationDecimal;
+            startPlotPoint[selfCoordinate] = locationDecimal;
+            endPlotPoint[selfCoordinate]   = locationDecimal;
 
             // Start point
-            CGPoint startViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:startPlotPoint];
+            CGPoint startViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:startPlotPoint numberOfCoordinates:2];
             startViewPoint.x += originTransformed.x;
             startViewPoint.y += originTransformed.y;
 
             // End point
-            CGPoint endViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:endPlotPoint];
+            CGPoint endViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:endPlotPoint numberOfCoordinates:2];
             endViewPoint.x += originTransformed.x;
             endViewPoint.y += originTransformed.y;
 
             // Align to pixels
-            startViewPoint = CPTAlignPointToUserSpace(context, startViewPoint);
-            endViewPoint   = CPTAlignPointToUserSpace(context, endViewPoint);
+            startViewPoint = alignmentFunction(context, startViewPoint);
+            endViewPoint   = alignmentFunction(context, endViewPoint);
 
             // Add grid line
             CGContextMoveToPoint(context, startViewPoint.x, startViewPoint.y);
@@ -532,11 +570,11 @@
                     if ( bandFill != null ) {
                         // Start point
                         startPlotPoint[selfCoordinate] = currentLocation;
-                        CGPoint startViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:startPlotPoint];
+                        CGPoint startViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:startPlotPoint numberOfCoordinates:2];
 
                         // End point
                         endPlotPoint[selfCoordinate] = lastLocation;
-                        CGPoint endViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:endPlotPoint];
+                        CGPoint endViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:endPlotPoint numberOfCoordinates:2];
 
                         // Fill band
                         CGRect fillRect = CPTRectMake( MIN(startViewPoint.x, endViewPoint.x),
@@ -564,11 +602,11 @@
                 if ( bandFill != null ) {
                     // Start point
                     startPlotPoint[selfCoordinate] = endLocation;
-                    CGPoint startViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:startPlotPoint];
+                    CGPoint startViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:startPlotPoint numberOfCoordinates:2];
 
                     // End point
                     endPlotPoint[selfCoordinate] = lastLocation;
-                    CGPoint endViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:endPlotPoint];
+                    CGPoint endViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:endPlotPoint numberOfCoordinates:2];
 
                     // Fill band
                     CGRect fillRect = CPTRectMake( MIN(startViewPoint.x, endViewPoint.x),
@@ -625,11 +663,11 @@
 
                     // Start point
                     startPlotPoint[selfCoordinate] = bandRange.location;
-                    CGPoint startViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:startPlotPoint];
+                    CGPoint startViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:startPlotPoint numberOfCoordinates:2];
 
                     // End point
                     endPlotPoint[selfCoordinate] = bandRange.end;
-                    CGPoint endViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:endPlotPoint];
+                    CGPoint endViewPoint = [thePlotSpace plotAreaViewPointForPlotPoint:endPlotPoint numberOfCoordinates:2];
 
                     // Fill band
                     CGRect fillRect = CPTRectMake( MIN(startViewPoint.x, endViewPoint.x),

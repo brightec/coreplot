@@ -1,5 +1,4 @@
 #import "CPTBorderedLayer.h"
-#import <Foundation/Foundation.h>
 
 /// @file
 
@@ -28,18 +27,20 @@ extern NSString *const CPTLegendNeedsReloadEntriesForPlotNotification;
 /// @}
 
 /**
- *  @brief Axis labeling delegate.
+ *  @brief Legend delegate.
  **/
 @protocol CPTLegendDelegate<NSObject>
+
+@optional
 
 /// @name Drawing
 /// @{
 
-/** @brief @required This method gives the delegate a chance to draw custom swatches for each legend entry.
+/** @brief @optional This method gives the delegate a chance to draw custom swatches for each legend entry.
  *
  *  The "swatch" is the graphical part of the legend entry, usually accompanied by a text title
  *  that will be drawn by the legend. Returning @NO will cause the legend to not draw the default
- *  legend graphics. It is then the delegate&rsquo;s responsiblity to do this.
+ *  legend graphics. It is then the delegate&rsquo;s responsibility to do this.
  *  @param legend The legend.
  *  @param idx The zero-based index of the legend entry for the given plot.
  *  @param plot The plot.
@@ -48,6 +49,34 @@ extern NSString *const CPTLegendNeedsReloadEntriesForPlotNotification;
  *  @return @YES if the legend should draw the default swatch or @NO if the delegate handled the drawing.
  **/
 -(BOOL)legend:(CPTLegend *)legend shouldDrawSwatchAtIndex:(NSUInteger)idx forPlot:(CPTPlot *)plot inRect:(CGRect)rect inContext:(CGContextRef)context;
+
+/// @}
+
+/// @name Legend Entry Selection
+/// @{
+
+/** @brief @optional Informs the delegate that the swatch or label of a legend entry was
+ *  @if MacOnly clicked. @endif
+ *  @if iOSOnly touched. @endif
+ *  @param legend The legend.
+ *  @param plot The plot associated with the selected legend entry.
+ *  @param idx The index of the
+ *  @if MacOnly clicked legend entry. @endif
+ *  @if iOSOnly touched legend entry. @endif
+ **/
+-(void)legend:(CPTLegend *)legend legendEntryForPlot:(CPTPlot *)plot wasSelectedAtIndex:(NSUInteger)idx;
+
+/** @brief @optional Informs the delegate that the swatch or label of a legend entry was
+ *  @if MacOnly clicked. @endif
+ *  @if iOSOnly touched. @endif
+ *  @param legend The legend.
+ *  @param plot The plot associated with the selected legend entry.
+ *  @param idx The index of the
+ *  @if MacOnly clicked legend entry. @endif
+ *  @if iOSOnly touched legend entry. @endif
+ *  @param event The event that triggered the selection.
+ **/
+-(void)legend:(CPTLegend *)legend legendEntryForPlot:(CPTPlot *)plot wasSelectedAtIndex:(NSUInteger)idx withEvent:(CPTNativeEvent *)event;
 
 /// @}
 

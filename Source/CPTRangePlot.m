@@ -1,15 +1,13 @@
 #import "CPTRangePlot.h"
 
-#import "CPTColor.h"
 #import "CPTExceptions.h"
 #import "CPTFill.h"
 #import "CPTLegend.h"
 #import "CPTLineStyle.h"
 #import "CPTMutableNumericData.h"
-#import "CPTNumericData.h"
 #import "CPTPathExtensions.h"
 #import "CPTPlotArea.h"
-#import "CPTPlotSpace.h"
+#import "CPTPlotRange.h"
 #import "CPTPlotSpace.h"
 #import "CPTPlotSpaceAnnotation.h"
 #import "CPTUtilities.h"
@@ -140,7 +138,6 @@ typedef struct CGPointError CGPointError;
         [self exposeBinding:CPTRangePlotBindingBarLineStyles];
     }
 }
-
 #endif
 
 /// @endcond
@@ -292,9 +289,7 @@ typedef struct CGPointError CGPointError;
 
 -(void)calculateViewPoints:(CGPointError *)viewPoints withDrawPointFlags:(BOOL *)drawPointFlags numberOfPoints:(NSUInteger)dataCount
 {
-    CPTPlotArea *thePlotArea   = self.plotArea;
     CPTPlotSpace *thePlotSpace = self.plotSpace;
-    CGPoint originTransformed  = [self convertPoint:self.frame.origin fromLayer:thePlotArea];
 
     // Calculate points
     if ( self.doublePrecisionCache ) {
@@ -319,25 +314,29 @@ typedef struct CGPointError CGPointError;
                 double plotPoint[2];
                 plotPoint[CPTCoordinateX] = x;
                 plotPoint[CPTCoordinateY] = y;
-                CGPoint pos = [thePlotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint];
-                viewPoints[i].x           = pos.x + originTransformed.x;
-                viewPoints[i].y           = pos.y + originTransformed.y;
+                CGPoint pos = [thePlotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint numberOfCoordinates:2];
+                viewPoints[i].x = pos.x;
+                viewPoints[i].y = pos.y;
+
                 plotPoint[CPTCoordinateX] = x;
                 plotPoint[CPTCoordinateY] = y + high;
-                pos                       = [thePlotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint];
-                viewPoints[i].high        = pos.y + originTransformed.y;
+                pos                       = [thePlotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint numberOfCoordinates:2];
+                viewPoints[i].high        = pos.y;
+
                 plotPoint[CPTCoordinateX] = x;
                 plotPoint[CPTCoordinateY] = y - low;
-                pos                       = [thePlotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint];
-                viewPoints[i].low         = pos.y + originTransformed.y;
+                pos                       = [thePlotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint numberOfCoordinates:2];
+                viewPoints[i].low         = pos.y;
+
                 plotPoint[CPTCoordinateX] = x - left;
                 plotPoint[CPTCoordinateY] = y;
-                pos                       = [thePlotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint];
-                viewPoints[i].left        = pos.x + originTransformed.x;
+                pos                       = [thePlotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint numberOfCoordinates:2];
+                viewPoints[i].left        = pos.x;
+
                 plotPoint[CPTCoordinateX] = x + right;
                 plotPoint[CPTCoordinateY] = y;
-                pos                       = [thePlotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint];
-                viewPoints[i].right       = pos.x + originTransformed.x;
+                pos                       = [thePlotSpace plotAreaViewPointForDoublePrecisionPlotPoint:plotPoint numberOfCoordinates:2];
+                viewPoints[i].right       = pos.x;
             }
         }
     }
@@ -364,17 +363,17 @@ typedef struct CGPointError CGPointError;
                 NSDecimal plotPoint[2];
                 plotPoint[CPTCoordinateX] = x;
                 plotPoint[CPTCoordinateY] = y;
-                CGPoint pos = [thePlotSpace plotAreaViewPointForPlotPoint:plotPoint];
-                viewPoints[i].x = pos.x + originTransformed.x;
-                viewPoints[i].y = pos.y + originTransformed.y;
+                CGPoint pos = [thePlotSpace plotAreaViewPointForPlotPoint:plotPoint numberOfCoordinates:2];
+                viewPoints[i].x = pos.x;
+                viewPoints[i].y = pos.y;
 
                 if ( !NSDecimalIsNotANumber(&high) ) {
                     plotPoint[CPTCoordinateX] = x;
                     NSDecimal yh;
                     NSDecimalAdd(&yh, &y, &high, NSRoundPlain);
                     plotPoint[CPTCoordinateY] = yh;
-                    pos                       = [thePlotSpace plotAreaViewPointForPlotPoint:plotPoint];
-                    viewPoints[i].high        = pos.y + originTransformed.y;
+                    pos                       = [thePlotSpace plotAreaViewPointForPlotPoint:plotPoint numberOfCoordinates:2];
+                    viewPoints[i].high        = pos.y;
                 }
                 else {
                     viewPoints[i].high = NAN;
@@ -385,8 +384,8 @@ typedef struct CGPointError CGPointError;
                     NSDecimal yl;
                     NSDecimalSubtract(&yl, &y, &low, NSRoundPlain);
                     plotPoint[CPTCoordinateY] = yl;
-                    pos                       = [thePlotSpace plotAreaViewPointForPlotPoint:plotPoint];
-                    viewPoints[i].low         = pos.y + originTransformed.y;
+                    pos                       = [thePlotSpace plotAreaViewPointForPlotPoint:plotPoint numberOfCoordinates:2];
+                    viewPoints[i].low         = pos.y;
                 }
                 else {
                     viewPoints[i].low = NAN;
@@ -397,8 +396,8 @@ typedef struct CGPointError CGPointError;
                     NSDecimalSubtract(&xl, &x, &left, NSRoundPlain);
                     plotPoint[CPTCoordinateX] = xl;
                     plotPoint[CPTCoordinateY] = y;
-                    pos                       = [thePlotSpace plotAreaViewPointForPlotPoint:plotPoint];
-                    viewPoints[i].left        = pos.x + originTransformed.x;
+                    pos                       = [thePlotSpace plotAreaViewPointForPlotPoint:plotPoint numberOfCoordinates:2];
+                    viewPoints[i].left        = pos.x;
                 }
                 else {
                     viewPoints[i].left = NAN;
@@ -408,8 +407,8 @@ typedef struct CGPointError CGPointError;
                     NSDecimalAdd(&xr, &x, &right, NSRoundPlain);
                     plotPoint[CPTCoordinateX] = xr;
                     plotPoint[CPTCoordinateY] = y;
-                    pos                       = [thePlotSpace plotAreaViewPointForPlotPoint:plotPoint];
-                    viewPoints[i].right       = pos.x + originTransformed.y;
+                    pos                       = [thePlotSpace plotAreaViewPointForPlotPoint:plotPoint numberOfCoordinates:2];
+                    viewPoints[i].right       = pos.x;
                 }
                 else {
                     viewPoints[i].right = NAN;
@@ -577,8 +576,8 @@ typedef struct CGPointError CGPointError;
     [super renderAsVectorInContext:context];
 
     // Calculate view points, and align to user space
-    CGPointError *viewPoints = malloc( dataCount * sizeof(CGPointError) );
-    BOOL *drawPointFlags     = malloc( dataCount * sizeof(BOOL) );
+    CGPointError *viewPoints = calloc( dataCount, sizeof(CGPointError) );
+    BOOL *drawPointFlags     = calloc( dataCount, sizeof(BOOL) );
 
     CPTXYPlotSpace *thePlotSpace = (CPTXYPlotSpace *)self.plotSpace;
     [self calculatePointsToDraw:drawPointFlags numberOfPoints:dataCount forPlotSpace:thePlotSpace includeVisiblePointsOnly:NO];
@@ -638,7 +637,7 @@ typedef struct CGPointError CGPointError;
 
             CGContextSaveGState(context);
 
-            // Pick the current linestyle with a low alpha component
+            // Pick the current line style with a low alpha component
             [self.areaFill fillPathInContext:context];
 
             CGPathRelease(fillPath);
@@ -656,10 +655,10 @@ typedef struct CGPointError CGPointError;
                         halfBarWidth:halfBarWidth
                          alignPoints:alignPoints];
         }
-
-        free(viewPoints);
-        free(drawPointFlags);
     }
+
+    free(viewPoints);
+    free(drawPointFlags);
 }
 
 -(void)drawRangeInContext:(CGContextRef)context
@@ -783,23 +782,9 @@ typedef struct CGPointError CGPointError;
     CPTFill *theFill = self.areaFill;
 
     if ( theFill ) {
-        CGPathRef swatchPath;
-        CGFloat radius = legend.swatchCornerRadius;
-        if ( radius > 0.0 ) {
-            radius     = MIN( MIN( radius, rect.size.width / CPTFloat(2.0) ), rect.size.height / CPTFloat(2.0) );
-            swatchPath = CreateRoundedRectPath(rect, radius);
-        }
-        else {
-            CGMutablePathRef mutablePath = CGPathCreateMutable();
-            CGPathAddRect(mutablePath, NULL, rect);
-            swatchPath = mutablePath;
-        }
-
         CGContextBeginPath(context);
-        CGContextAddPath(context, swatchPath);
+        AddRoundedRectPath(context, CPTAlignIntegralRectToUserSpace(context, rect), legend.swatchCornerRadius);
         [theFill fillPathInContext:context];
-
-        CGPathRelease(swatchPath);
     }
 
     CPTLineStyle *theBarLineStyle = [self barLineStyleForIndex:idx];
@@ -953,7 +938,7 @@ typedef struct CGPointError CGPointError;
 -(NSUInteger)dataIndexFromInteractionPoint:(CGPoint)point
 {
     NSUInteger dataCount     = self.cachedDataCount;
-    CGPointError *viewPoints = malloc( dataCount * sizeof(CGPointError) );
+    CGPointError *viewPoints = calloc( dataCount, sizeof(CGPointError) );
     BOOL *drawPointFlags     = malloc( dataCount * sizeof(BOOL) );
 
     [self calculatePointsToDraw:drawPointFlags numberOfPoints:dataCount forPlotSpace:(id)self.plotSpace includeVisiblePointsOnly:YES];

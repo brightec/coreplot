@@ -3,7 +3,6 @@
 #import "CPTAxis.h"
 #import "CPTAxisSet.h"
 #import "CPTExceptions.h"
-#import "CPTFill.h"
 #import "CPTGraphHostingView.h"
 #import "CPTLayerAnnotation.h"
 #import "CPTLegend.h"
@@ -36,7 +35,7 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
 @property (nonatomic, readwrite, retain) CPTLayerAnnotation *legendAnnotation;
 
 -(void)plotSpaceMappingDidChange:(NSNotification *)notif;
--(CGPoint)contentAnchorForLegend;
+-(CGPoint)contentAnchorForRectAnchor:(CPTRectAnchor)anchor;
 
 @end
 
@@ -107,12 +106,25 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
 
 /** @property NSString *title
  *  @brief The title string.
- *  Default is @nil.
+ *
+ *  Assigning a new value to this property also sets the value of the @ref attributedTitle property to @nil.
  **/
 @synthesize title;
 
+/** @property NSAttributedString *attributedTitle
+ *  @brief The styled title string.
+ *
+ *  Assigning a new value to this property also sets the value of the @ref title property to the
+ *  same string without formatting information. It also replaces the @ref titleTextStyle with
+ *  a style matching the first position (location @num{0}) of the styled title.
+ *  Default is @nil.
+ **/
+@synthesize attributedTitle;
+
 /** @property CPTTextStyle *titleTextStyle
  *  @brief The text style of the title.
+ *
+ *  Assigning a new value to this property also sets the value of the @ref attributedTitle property to @nil.
  **/
 @synthesize titleTextStyle;
 
@@ -163,6 +175,7 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
  *  This is the designated initializer. The initialized layer will have the following properties:
  *  - @ref hostingView = @nil
  *  - @ref title = @nil
+ *  - @ref attributedTitle = @nil
  *  - @ref titlePlotAreaFrameAnchor = #CPTRectAnchorTop
  *  - @ref titleTextStyle = default text style
  *  - @ref titleDisplacement = (@num{0.0}, @num{0.0})
@@ -195,7 +208,7 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
         self.paddingBottom = CPTFloat(20.0);
 
         // Plot area
-        CPTPlotAreaFrame *newArea = [(CPTPlotAreaFrame *)[CPTPlotAreaFrame alloc] initWithFrame:self.bounds];
+        CPTPlotAreaFrame *newArea = [(CPTPlotAreaFrame *)[CPTPlotAreaFrame alloc] initWithFrame : self.bounds];
         self.plotAreaFrame = newArea;
         [newArea release];
 
@@ -212,6 +225,7 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
 
         // Title
         title                    = nil;
+        attributedTitle          = nil;
         titlePlotAreaFrameAnchor = CPTRectAnchorTop;
         titleTextStyle           = [[CPTTextStyle textStyle] retain];
         titleDisplacement        = CGPointZero;
@@ -242,6 +256,7 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
         plots                    = [theLayer->plots retain];
         plotSpaces               = [theLayer->plotSpaces retain];
         title                    = [theLayer->title retain];
+        attributedTitle          = [theLayer->attributedTitle retain];
         titlePlotAreaFrameAnchor = theLayer->titlePlotAreaFrameAnchor;
         titleTextStyle           = [theLayer->titleTextStyle retain];
         titleDisplacement        = theLayer->titleDisplacement;
@@ -262,6 +277,7 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
     [plots release];
     [plotSpaces release];
     [title release];
+    [attributedTitle release];
     [titleTextStyle release];
     [titleAnnotation release];
     [legend release];
@@ -286,6 +302,7 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
     [coder encodeObject:self.plots forKey:@"CPTGraph.plots"];
     [coder encodeObject:self.plotSpaces forKey:@"CPTGraph.plotSpaces"];
     [coder encodeObject:self.title forKey:@"CPTGraph.title"];
+    [coder encodeObject:self.attributedTitle forKey:@"CPTGraph.attributedTitle"];
     [coder encodeObject:self.titleTextStyle forKey:@"CPTGraph.titleTextStyle"];
     [coder encodeInt:self.titlePlotAreaFrameAnchor forKey:@"CPTGraph.titlePlotAreaFrameAnchor"];
     [coder encodeCPTPoint:self.titleDisplacement forKey:@"CPTGraph.titleDisplacement"];
@@ -299,11 +316,12 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
 -(id)initWithCoder:(NSCoder *)coder
 {
     if ( (self = [super initWithCoder:coder]) ) {
-        hostingView              = [[coder decodeObjectForKey:@"CPTGraph.hostingView"] retain];
+        hostingView              = [coder decodeObjectForKey:@"CPTGraph.hostingView"];
         plotAreaFrame            = [[coder decodeObjectForKey:@"CPTGraph.plotAreaFrame"] retain];
         plots                    = [[coder decodeObjectForKey:@"CPTGraph.plots"] mutableCopy];
         plotSpaces               = [[coder decodeObjectForKey:@"CPTGraph.plotSpaces"] mutableCopy];
         title                    = [[coder decodeObjectForKey:@"CPTGraph.title"] copy];
+        attributedTitle          = [[coder decodeObjectForKey:@"CPTGraph.attributedTitle"] copy];
         titleTextStyle           = [[coder decodeObjectForKey:@"CPTGraph.titleTextStyle"] copy];
         titlePlotAreaFrameAnchor = (CPTRectAnchor)[coder decodeIntForKey : @"CPTGraph.titlePlotAreaFrameAnchor"];
         titleDisplacement        = [coder decodeCPTPointForKey:@"CPTGraph.titleDisplacement"];
@@ -599,6 +617,7 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
     for ( CPTAxis *axis in self.axisSet.axes ) {
         if ( axis.plotSpace == plotSpace ) {
             [axis setNeedsRelabel];
+            [axis updateAxisTitle];
             backgroundBandsNeedRedraw |= (axis.backgroundLimitBands.count > 0);
         }
     }
@@ -667,7 +686,7 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
                 newLegendAnnotation.contentLayer       = legend;
                 newLegendAnnotation.displacement       = self.legendDisplacement;
                 newLegendAnnotation.rectAnchor         = self.legendAnchor;
-                newLegendAnnotation.contentAnchorPoint = [self contentAnchorForLegend];
+                newLegendAnnotation.contentAnchorPoint = [self contentAnchorForRectAnchor:self.legendAnchor];
                 [self addAnnotation:newLegendAnnotation];
                 self.legendAnnotation = newLegendAnnotation;
                 [newLegendAnnotation release];
@@ -689,7 +708,7 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
         CPTLayerAnnotation *theLegendAnnotation = self.legendAnnotation;
         if ( theLegendAnnotation ) {
             theLegendAnnotation.rectAnchor         = newLegendAnchor;
-            theLegendAnnotation.contentAnchorPoint = [self contentAnchorForLegend];
+            theLegendAnnotation.contentAnchorPoint = [self contentAnchorForRectAnchor:self.legendAnchor];
         }
     }
 }
@@ -702,11 +721,11 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
     }
 }
 
--(CGPoint)contentAnchorForLegend
+-(CGPoint)contentAnchorForRectAnchor:(CPTRectAnchor)anchor
 {
     CGPoint contentAnchor = CGPointZero;
 
-    switch ( self.legendAnchor ) {
+    switch ( anchor ) {
         case CPTRectAnchorBottomLeft:
             contentAnchor = CPTPointMake(0.0, 0.0);
             break;
@@ -805,6 +824,10 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
         [title release];
         title = [newTitle copy];
         CPTLayerAnnotation *theTitleAnnotation = self.titleAnnotation;
+
+        [attributedTitle release];
+        attributedTitle = nil;
+
         if ( title ) {
             if ( theTitleAnnotation ) {
                 ( (CPTTextLayer *)theTitleAnnotation.contentLayer ).text = title;
@@ -812,9 +835,10 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
             else {
                 CPTLayerAnnotation *newTitleAnnotation = [[CPTLayerAnnotation alloc] initWithAnchorLayer:self.plotAreaFrame];
                 CPTTextLayer *newTextLayer             = [[CPTTextLayer alloc] initWithText:title style:self.titleTextStyle];
-                newTitleAnnotation.contentLayer = newTextLayer;
-                newTitleAnnotation.displacement = self.titleDisplacement;
-                newTitleAnnotation.rectAnchor   = self.titlePlotAreaFrameAnchor;
+                newTitleAnnotation.contentLayer       = newTextLayer;
+                newTitleAnnotation.displacement       = self.titleDisplacement;
+                newTitleAnnotation.rectAnchor         = self.titlePlotAreaFrameAnchor;
+                newTitleAnnotation.contentAnchorPoint = [self contentAnchorForRectAnchor:self.titlePlotAreaFrameAnchor];
                 [self addAnnotation:newTitleAnnotation];
                 self.titleAnnotation = newTitleAnnotation;
                 [newTextLayer release];
@@ -830,28 +854,84 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
     }
 }
 
+-(void)setAttributedTitle:(NSAttributedString *)newTitle
+{
+    if ( newTitle != attributedTitle ) {
+        [attributedTitle release];
+        attributedTitle = [newTitle copy];
+        CPTLayerAnnotation *theTitleAnnotation = self.titleAnnotation;
+
+        [titleTextStyle release];
+        [title release];
+
+        if ( attributedTitle ) {
+            titleTextStyle = [[CPTTextStyle textStyleWithAttributes:[attributedTitle attributesAtIndex:0
+                                                                                        effectiveRange:NULL]] retain];
+            title = [attributedTitle.string copy];
+
+            if ( theTitleAnnotation ) {
+                ( (CPTTextLayer *)theTitleAnnotation.contentLayer ).attributedText = attributedTitle;
+            }
+            else {
+                CPTLayerAnnotation *newTitleAnnotation = [[CPTLayerAnnotation alloc] initWithAnchorLayer:self.plotAreaFrame];
+                CPTTextLayer *newTextLayer             = [[CPTTextLayer alloc] initWithAttributedText:attributedTitle];
+                newTitleAnnotation.contentLayer       = newTextLayer;
+                newTitleAnnotation.displacement       = self.titleDisplacement;
+                newTitleAnnotation.rectAnchor         = self.titlePlotAreaFrameAnchor;
+                newTitleAnnotation.contentAnchorPoint = [self contentAnchorForRectAnchor:self.titlePlotAreaFrameAnchor];
+                [self addAnnotation:newTitleAnnotation];
+                self.titleAnnotation = newTitleAnnotation;
+                [newTextLayer release];
+                [newTitleAnnotation release];
+            }
+        }
+        else {
+            titleTextStyle = nil;
+            title          = nil;
+
+            if ( theTitleAnnotation ) {
+                [self removeAnnotation:theTitleAnnotation];
+                self.titleAnnotation = nil;
+            }
+        }
+    }
+}
+
 -(void)setTitleTextStyle:(CPTMutableTextStyle *)newStyle
 {
     if ( newStyle != titleTextStyle ) {
         [titleTextStyle release];
-        titleTextStyle                                                  = [newStyle copy];
-        ( (CPTTextLayer *)self.titleAnnotation.contentLayer ).textStyle = titleTextStyle;
+        titleTextStyle = [newStyle copy];
+
+        [attributedTitle release];
+        attributedTitle = nil;
+
+        CPTTextLayer *titleLayer = (CPTTextLayer *)self.titleAnnotation.contentLayer;
+        if ( [titleLayer isKindOfClass:[CPTTextLayer class]] ) {
+            titleLayer.textStyle = titleTextStyle;
+        }
     }
 }
 
 -(void)setTitleDisplacement:(CGPoint)newDisplace
 {
     if ( !CGPointEqualToPoint(newDisplace, titleDisplacement) ) {
-        titleDisplacement            = newDisplace;
-        titleAnnotation.displacement = newDisplace;
+        titleDisplacement = newDisplace;
+
+        self.titleAnnotation.displacement = newDisplace;
     }
 }
 
 -(void)setTitlePlotAreaFrameAnchor:(CPTRectAnchor)newAnchor
 {
     if ( newAnchor != titlePlotAreaFrameAnchor ) {
-        titlePlotAreaFrameAnchor   = newAnchor;
-        titleAnnotation.rectAnchor = titlePlotAreaFrameAnchor;
+        titlePlotAreaFrameAnchor = newAnchor;
+
+        CPTLayerAnnotation *theTitleAnnotation = self.titleAnnotation;
+        if ( theTitleAnnotation ) {
+            theTitleAnnotation.rectAnchor         = titlePlotAreaFrameAnchor;
+            theTitleAnnotation.contentAnchorPoint = [self contentAnchorForRectAnchor:titlePlotAreaFrameAnchor];
+        }
     }
 }
 
@@ -873,10 +953,11 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
  *  -# All plots in reverse order (i.e., from front to back in the layer order)
  *  -# The axis set
  *  -# The plot area
+ *  -# The legend
  *
  *  If any layer handles the event, subsequent layers are not notified and
  *  this method immediately returns @YES. If none of the layers
- *  handle the event, it is passed to all plot spaces whether or not they handle it or not.
+ *  handle the event, it is passed to all plot spaces whether they handle it or not.
  *
  *  @param event The OS event.
  *  @param interactionPoint The coordinates of the interaction.
@@ -898,6 +979,11 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
 
     // Plot area
     if ( [self.plotAreaFrame pointingDeviceDownEvent:event atPoint:interactionPoint] ) {
+        return YES;
+    }
+
+    // Legend
+    if ( [self.legend pointingDeviceDownEvent:event atPoint:interactionPoint] ) {
         return YES;
     }
 
@@ -923,10 +1009,11 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
  *  -# All plots in reverse order (i.e., from front to back in the layer order)
  *  -# The axis set
  *  -# The plot area
+ *  -# The legend
  *
  *  If any layer handles the event, subsequent layers are not notified and
  *  this method immediately returns @YES. If none of the layers
- *  handle the event, it is passed to all plot spaces whether or not they handle it or not.
+ *  handle the event, it is passed to all plot spaces whether they handle it or not.
  *
  *  @param event The OS event.
  *  @param interactionPoint The coordinates of the interaction.
@@ -948,6 +1035,11 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
 
     // Plot area
     if ( [self.plotAreaFrame pointingDeviceUpEvent:event atPoint:interactionPoint] ) {
+        return YES;
+    }
+
+    // Legend
+    if ( [self.legend pointingDeviceUpEvent:event atPoint:interactionPoint] ) {
         return YES;
     }
 
@@ -973,10 +1065,11 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
  *  -# All plots in reverse order (i.e., from front to back in the layer order)
  *  -# The axis set
  *  -# The plot area
+ *  -# The legend
  *
  *  If any layer handles the event, subsequent layers are not notified and
  *  this method immediately returns @YES. If none of the layers
- *  handle the event, it is passed to all plot spaces whether or not they handle it or not.
+ *  handle the event, it is passed to all plot spaces whether they handle it or not.
  *
  *  @param event The OS event.
  *  @param interactionPoint The coordinates of the interaction.
@@ -998,6 +1091,11 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
 
     // Plot area
     if ( [self.plotAreaFrame pointingDeviceDraggedEvent:event atPoint:interactionPoint] ) {
+        return YES;
+    }
+
+    // Legend
+    if ( [self.legend pointingDeviceDraggedEvent:event atPoint:interactionPoint] ) {
         return YES;
     }
 
@@ -1024,10 +1122,11 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
  *  -# All plots in reverse order (i.e., from front to back in the layer order)
  *  -# The axis set
  *  -# The plot area
+ *  -# The legend
  *
  *  If any layer handles the event, subsequent layers are not notified and
  *  this method immediately returns @YES. If none of the layers
- *  handle the event, it is passed to all plot spaces whether or not they handle it or not.
+ *  handle the event, it is passed to all plot spaces whether they handle it or not.
  *
  *  @param event The OS event.
  *  @return Whether the event was handled or not.
@@ -1048,6 +1147,11 @@ NSString *const CPTGraphNeedsRedrawNotification = @"CPTGraphNeedsRedrawNotificat
 
     // Plot area
     if ( [self.plotAreaFrame pointingDeviceCancelledEvent:event] ) {
+        return YES;
+    }
+
+    // Legend
+    if ( [self.legend pointingDeviceCancelledEvent:event] ) {
         return YES;
     }
 

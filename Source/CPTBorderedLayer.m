@@ -12,9 +12,13 @@
 
 @property (nonatomic, readonly, retain) CPTLayer *borderLayer;
 
+-(void)updateOpacity;
+
 @end
 
 /// @endcond
+
+#pragma mark -
 
 /**
  *  @brief A layer with a border line and background fill.
@@ -111,7 +115,9 @@
 
     [coder encodeObject:self.borderLineStyle forKey:@"CPTBorderedLayer.borderLineStyle"];
     [coder encodeObject:self.fill forKey:@"CPTBorderedLayer.fill"];
-    [coder encodeBool:self.inLayout forKey:@"CPTBorderedLayer.inLayout"];
+
+    // No need to archive these properties:
+    // inLayout
 }
 
 -(id)initWithCoder:(NSCoder *)coder
@@ -119,7 +125,8 @@
     if ( (self = [super initWithCoder:coder]) ) {
         borderLineStyle = [[coder decodeObjectForKey:@"CPTBorderedLayer.borderLineStyle"] copy];
         fill            = [[coder decodeObjectForKey:@"CPTBorderedLayer.fill"] copy];
-        inLayout        = [coder decodeBoolForKey:@"CPTBorderedLayer.inLayout"];
+
+        inLayout = NO;
     }
     return self;
 }
@@ -138,37 +145,37 @@
     }
 
     [super renderAsVectorInContext:context];
-    [self renderBorderedLayer:self asVectorInContext:context];
+    [self renderBorderedLayerAsVectorInContext:context];
 }
 
 /// @endcond
 
 /** @brief Draws the fill and border of a CPTBorderedLayer into the given graphics context.
- *  @param layer The CPTBorderedLayer that provides the fill and border line style.
  *  @param context The graphics context to draw into.
  **/
--(void)renderBorderedLayer:(CPTBorderedLayer *)layer asVectorInContext:(CGContextRef)context
+-(void)renderBorderedLayerAsVectorInContext:(CGContextRef)context
 {
-    CPTFill *theFill = layer.fill;
+    CPTFill *theFill = self.fill;
 
     if ( theFill ) {
-        BOOL useMask = layer.masksToBounds;
-        layer.masksToBounds = YES;
+        BOOL useMask = self.masksToBounds;
+        self.masksToBounds = YES;
         CGContextBeginPath(context);
-        CGContextAddPath(context, layer.maskingPath);
+        CGContextAddPath(context, self.maskingPath);
         [theFill fillPathInContext:context];
-        layer.masksToBounds = useMask;
+        self.masksToBounds = useMask;
     }
 
-    CPTLineStyle *theLineStyle = layer.borderLineStyle;
+    CPTLineStyle *theLineStyle = self.borderLineStyle;
     if ( theLineStyle ) {
-        CGFloat inset      = theLineStyle.lineWidth * (CGFloat)0.5;
-        CGRect layerBounds = CGRectInset(layer.bounds, inset, inset);
+        CGFloat inset      = theLineStyle.lineWidth * CPTFloat(0.5);
+        CGRect layerBounds = CGRectInset(self.bounds, inset, inset);
 
         [theLineStyle setLineStyleInContext:context];
 
-        if ( layer.cornerRadius > 0.0 ) {
-            CGFloat radius = MIN(MIN(layer.cornerRadius, layerBounds.size.width * (CGFloat)0.5), layerBounds.size.height * (CGFloat)0.5);
+        CGFloat radius = self.cornerRadius;
+
+        if ( radius > CPTFloat(0.0) ) {
             CGContextBeginPath(context);
             AddRoundedRectPath(context, layerBounds, radius);
             [theLineStyle strokePathInContext:context];
@@ -195,10 +202,9 @@
 {
     [super sublayerMarginLeft:left top:top right:right bottom:bottom];
 
-    CPTLineStyle *theLineStyle = self.borderLineStyle;
-    if ( theLineStyle ) {
-        CGFloat inset = theLineStyle.lineWidth * CPTFloat(0.5);
+    CGFloat inset = self.borderLineStyle.lineWidth * CPTFloat(0.5);
 
+    if ( inset > CPTFloat(0.0) ) {
         *left   += inset;
         *top    += inset;
         *right  += inset;
@@ -232,21 +238,11 @@
             return path;
         }
 
-        CGFloat lineWidth = self.borderLineStyle.lineWidth;
-        CGRect selfBounds = self.bounds;
+        CGFloat radius = self.cornerRadius + self.borderLineStyle.lineWidth;
 
-        if ( self.cornerRadius > 0.0 ) {
-            CGFloat radius = MIN( MIN( self.cornerRadius + lineWidth / CPTFloat(2.0), selfBounds.size.width / CPTFloat(2.0) ), selfBounds.size.height / CPTFloat(2.0) );
-            path                 = CreateRoundedRectPath(selfBounds, radius);
-            self.outerBorderPath = path;
-            CGPathRelease(path);
-        }
-        else {
-            CGMutablePathRef mutablePath = CGPathCreateMutable();
-            CGPathAddRect(mutablePath, NULL, selfBounds);
-            self.outerBorderPath = mutablePath;
-            CGPathRelease(mutablePath);
-        }
+        path                 = CreateRoundedRectPath(self.bounds, radius);
+        self.outerBorderPath = path;
+        CGPathRelease(path);
 
         return self.outerBorderPath;
     }
@@ -266,18 +262,9 @@
         CGFloat lineWidth = self.borderLineStyle.lineWidth;
         CGRect selfBounds = CGRectInset(self.bounds, lineWidth, lineWidth);
 
-        if ( self.cornerRadius > 0.0 ) {
-            CGFloat radius = MIN( MIN( self.cornerRadius - lineWidth / CPTFloat(2.0), selfBounds.size.width / CPTFloat(2.0) ), selfBounds.size.height / CPTFloat(2.0) );
-            path                 = CreateRoundedRectPath(selfBounds, radius);
-            self.innerBorderPath = path;
-            CGPathRelease(path);
-        }
-        else {
-            CGMutablePathRef mutablePath = CGPathCreateMutable();
-            CGPathAddRect(mutablePath, NULL, selfBounds);
-            self.innerBorderPath = mutablePath;
-            CGPathRelease(mutablePath);
-        }
+        path                 = CreateRoundedRectPath( selfBounds, self.cornerRadius - lineWidth * CPTFloat(0.5) );
+        self.innerBorderPath = path;
+        CGPathRelease(path);
 
         return self.innerBorderPath;
     }
@@ -307,6 +294,20 @@
     [super removeFromSuperlayer];
 }
 
+-(void)updateOpacity
+{
+    BOOL opaqueLayer = ( ( self.cornerRadius <= CPTFloat(0.0) ) && self.fill.opaque );
+
+    CPTLineStyle *lineStyle = self.borderLineStyle;
+
+    if ( lineStyle ) {
+        opaqueLayer = opaqueLayer && lineStyle.opaque;
+    }
+
+    self.opaque             = NO;
+    self.borderLayer.opaque = opaqueLayer;
+}
+
 /// @endcond
 
 #pragma mark -
@@ -322,14 +323,13 @@
             self.innerBorderPath = NULL;
             [self setNeedsLayout];
         }
+
         [borderLineStyle release];
         borderLineStyle = [newLineStyle copy];
-        if ( self.masksToBorder ) {
-            [self.superlayer setNeedsDisplay];
-        }
-        else {
-            [self setNeedsDisplay];
-        }
+
+        [self updateOpacity];
+
+        [self.borderLayer setNeedsDisplay];
     }
 }
 
@@ -338,12 +338,19 @@
     if ( newFill != fill ) {
         [fill release];
         fill = [newFill copy];
-        if ( self.masksToBorder ) {
-            [self.superlayer setNeedsDisplay];
-        }
-        else {
-            [self setNeedsDisplay];
-        }
+
+        [self updateOpacity];
+
+        [self.borderLayer setNeedsDisplay];
+    }
+}
+
+-(void)setCornerRadius:(CGFloat)newRadius
+{
+    if ( newRadius != self.cornerRadius ) {
+        super.cornerRadius = newRadius;
+
+        [self updateOpacity];
     }
 }
 
@@ -383,6 +390,7 @@
                 [newBorderLayer addSublayer:self];
 
                 newBorderLayer.transform = self.transform;
+                newBorderLayer.shadow    = self.shadow;
 
                 self.transform = CATransform3DIdentity;
 
@@ -445,6 +453,16 @@
     }
 }
 
+-(void)setHidden:(BOOL)newHidden
+{
+    if ( self.masksToBorder ) {
+        [self.borderLayer setHidden:newHidden];
+    }
+    else {
+        [super setHidden:newHidden];
+    }
+}
+
 -(void)setTransform:(CATransform3D)newTransform
 {
     if ( self.masksToBorder ) {
@@ -452,6 +470,17 @@
     }
     else {
         [super setTransform:newTransform];
+    }
+}
+
+-(void)setShadow:(CPTShadow *)newShadow
+{
+    if ( newShadow != self.shadow ) {
+        [super setShadow:newShadow];
+
+        if ( self.masksToBorder ) {
+            self.borderLayer.shadow = newShadow;
+        }
     }
 }
 

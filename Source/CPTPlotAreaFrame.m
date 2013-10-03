@@ -1,8 +1,6 @@
 #import "CPTPlotAreaFrame.h"
 
 #import "CPTAxisSet.h"
-#import "CPTDefinitions.h"
-#import "CPTLineStyle.h"
 #import "CPTPlotArea.h"
 #import "CPTPlotGroup.h"
 
@@ -61,7 +59,7 @@
     if ( (self = [super initWithFrame:newFrame]) ) {
         plotArea = nil;
 
-        CPTPlotArea *newPlotArea = [(CPTPlotArea *)[CPTPlotArea alloc] initWithFrame:newFrame];
+        CPTPlotArea *newPlotArea = [(CPTPlotArea *)[CPTPlotArea alloc] initWithFrame : newFrame];
         self.plotArea = newPlotArea;
         [newPlotArea release];
 
@@ -128,6 +126,7 @@
         plotArea = [newPlotArea retain];
         if ( plotArea ) {
             [self insertSublayer:plotArea atIndex:0];
+            plotArea.graph = self.graph;
         }
         [self setNeedsLayout];
     }
@@ -151,6 +150,15 @@
 -(void)setPlotGroup:(CPTPlotGroup *)newPlotGroup
 {
     self.plotArea.plotGroup = newPlotGroup;
+}
+
+-(void)setGraph:(CPTGraph *)newGraph
+{
+    if ( newGraph != self.graph ) {
+        [super setGraph:newGraph];
+
+        self.plotArea.graph = newGraph;
+    }
 }
 
 /// @endcond

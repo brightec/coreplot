@@ -12,6 +12,7 @@
 
 @property (nonatomic, readwrite, assign) CGPathRef cachedSymbolPath;
 @property (nonatomic, readwrite, assign) CGLayerRef cachedLayer;
+@property (nonatomic, readwrite, assign) CGFloat cachedScale;
 
 -(CGPathRef)newSymbolPath;
 
@@ -71,6 +72,7 @@
 @dynamic cachedSymbolPath;
 
 @synthesize cachedLayer;
+@synthesize cachedScale;
 
 #pragma mark -
 #pragma mark Init/Dealloc
@@ -105,6 +107,7 @@
         customSymbolPath    = NULL;
         usesEvenOddClipRule = NO;
         cachedLayer         = NULL;
+        cachedScale         = CPTFloat(0.0);
     }
     return self;
 }
@@ -154,6 +157,7 @@
     // No need to archive these properties:
     // cachedSymbolPath
     // cachedLayer
+    // cachedScale
 }
 
 -(id)initWithCoder:(NSCoder *)coder
@@ -170,6 +174,7 @@
 
         cachedSymbolPath = NULL;
         cachedLayer      = NULL;
+        cachedScale      = CPTFloat(0.0);
     }
     return self;
 }
@@ -212,6 +217,32 @@
         CGPathRelease(customSymbolPath);
         customSymbolPath      = CGPathRetain(newPath);
         self.cachedSymbolPath = NULL;
+    }
+}
+
+-(void)setLineStyle:(CPTLineStyle *)newLineStyle
+{
+    if ( newLineStyle != lineStyle ) {
+        [lineStyle release];
+        lineStyle        = [newLineStyle retain];
+        self.cachedLayer = NULL;
+    }
+}
+
+-(void)setFill:(CPTFill *)newFill
+{
+    if ( newFill != fill ) {
+        [fill release];
+        fill             = [newFill retain];
+        self.cachedLayer = NULL;
+    }
+}
+
+-(void)setUsesEvenOddClipRule:(BOOL)newEvenOddClipRule
+{
+    if ( newEvenOddClipRule != usesEvenOddClipRule ) {
+        usesEvenOddClipRule = newEvenOddClipRule;
+        self.cachedLayer    = NULL;
     }
 }
 
@@ -412,11 +443,13 @@
 {
     CPTPlotSymbol *copy = [[[self class] allocWithZone:zone] init];
 
+    copy.anchorPoint         = self.anchorPoint;
     copy.size                = self.size;
     copy.symbolType          = self.symbolType;
     copy.usesEvenOddClipRule = self.usesEvenOddClipRule;
     copy.lineStyle           = [[self.lineStyle copy] autorelease];
     copy.fill                = [[self.fill copy] autorelease];
+    copy.shadow              = [[self.shadow copy] autorelease];
 
     if ( self.customSymbolPath ) {
         CGPathRef pathCopy = CGPathCreateCopy(self.customSymbolPath);
@@ -454,8 +487,9 @@
     }
 
     CGLayerRef theCachedLayer = self.cachedLayer;
+    CGFloat theCachedScale    = self.cachedScale;
 
-    if ( !theCachedLayer ) {
+    if ( !theCachedLayer || (theCachedScale != scale) ) {
         CGSize layerSize  = symbolSize;
         CGFloat lineWidth = self.lineStyle.lineWidth;
 
@@ -468,14 +502,17 @@
         layerSize.height += symbolMargin;
 
         self.anchorPoint = CPTPointMake(0.5, 0.5);
-        theCachedLayer   = CGLayerCreateWithContext(context, layerSize, NULL);
 
-        [self renderAsVectorInContext:CGLayerGetContext(theCachedLayer)
+        CGLayerRef newLayer = CGLayerCreateWithContext(context, layerSize, NULL);
+
+        [self renderAsVectorInContext:CGLayerGetContext(newLayer)
                               atPoint:CPTPointMake( layerSize.width * CPTFloat(0.5), layerSize.height * CPTFloat(0.5) )
                                 scale:scale];
 
-        self.cachedLayer = theCachedLayer;
-        CGLayerRelease(theCachedLayer);
+        self.cachedLayer = newLayer;
+        CGLayerRelease(newLayer);
+        self.cachedScale = scale;
+        theCachedLayer   = self.cachedLayer;
         self.anchorPoint = symbolAnchor;
     }
 
@@ -549,6 +586,7 @@
             CGContextTranslateCTM(context, center.x + ( symbolAnchor.x - CPTFloat(0.5) ) * symbolSize.width, center.y + ( symbolAnchor.y - CPTFloat(0.5) ) * symbolSize.height);
             CGContextScaleCTM(context, scale, scale);
             [self.shadow setShadowInContext:context];
+            CGContextBeginTransparencyLayer(context, NULL);
 
             if ( theFill ) {
                 // use fillRect instead of fillPath so that images and gradients are properly centered in the symbol
@@ -577,6 +615,7 @@
                 [theLineStyle strokePathInContext:context];
             }
 
+            CGContextEndTransparencyLayer(context);
             CGContextRestoreGState(context);
         }
     }
@@ -701,13 +740,11 @@
         {
             CGPathRef customPath = self.customSymbolPath;
             if ( customPath ) {
-                CGRect oldBounds                 = CGRectNull;
-                CGAffineTransform scaleTransform = CGAffineTransformIdentity;
+                CGRect oldBounds = CGPathGetBoundingBox(customPath);
+                CGFloat dx1      = symbolSize.width / oldBounds.size.width;
+                CGFloat dy1      = symbolSize.height / oldBounds.size.height;
 
-                oldBounds = CGPathGetBoundingBox(customPath);
-                CGFloat dx1 = symbolSize.width / oldBounds.size.width;
-                CGFloat dy1 = symbolSize.height / oldBounds.size.height;
-                scaleTransform = CGAffineTransformScale(CGAffineTransformIdentity, dx1, dy1);
+                CGAffineTransform scaleTransform = CGAffineTransformScale(CGAffineTransformIdentity, dx1, dy1);
                 scaleTransform = CGAffineTransformConcat( scaleTransform,
                                                           CGAffineTransformMakeTranslation(-halfSize.width, -halfSize.height) );
                 CGPathAddPath(symbolPath, &scaleTransform, customPath);

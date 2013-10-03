@@ -1,6 +1,3 @@
-#import <Foundation/Foundation.h>
-#import <QuartzCore/QuartzCore.h>
-
 @class CPTGradient;
 @class CPTImage;
 @class CPTColor;
@@ -28,6 +25,8 @@
  *  @brief CPTFill abstract methods—must be overridden by subclasses
  **/
 @interface CPTFill(AbstractMethods)
+
+@property (nonatomic, readonly, getter = isOpaque) BOOL opaque;
 
 /// @name Drawing
 /// @{

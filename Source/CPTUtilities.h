@@ -1,5 +1,4 @@
 #import "CPTDefinitions.h"
-#import <Foundation/Foundation.h>
 
 /// @file
 
@@ -77,6 +76,9 @@ BOOL CPTDecimalEquals(NSDecimal leftOperand, NSDecimal rightOperand);
 /// @name NSDecimal Utilities
 /// @{
 NSDecimal CPTDecimalNaN(void);
+NSDecimal CPTDecimalMin(NSDecimal leftOperand, NSDecimal rightOperand);
+NSDecimal CPTDecimalMax(NSDecimal leftOperand, NSDecimal rightOperand);
+NSDecimal CPTDecimalAbs(NSDecimal value);
 
 /// @}
 
@@ -100,6 +102,17 @@ CPTRGBAColor CPTRGBAColorFromCGColor(CGColorRef color);
 
 /// @name Quartz Pixel-Alignment Functions
 /// @{
+
+/**
+ *  @brief A function called to align a point in a CGContext.
+ **/
+typedef CGPoint (*CPTAlignPointFunction)(CGContextRef, CGPoint);
+
+/**
+ *  @brief A function called to align a rectangle in a CGContext.
+ **/
+typedef CGRect (*CPTAlignRectFunction)(CGContextRef, CGRect);
+
 CGPoint CPTAlignPointToUserSpace(CGContextRef context, CGPoint point);
 CGSize CPTAlignSizeToUserSpace(CGContextRef context, CGSize size);
 CGRect CPTAlignRectToUserSpace(CGContextRef context, CGRect rect);

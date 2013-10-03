@@ -1,8 +1,6 @@
 #import "CPTAnnotationHostLayer.h"
 #import "CPTDefinitions.h"
-#import "CPTMutableTextStyle.h"
 #import "CPTNumericDataType.h"
-#import "CPTPlotRange.h"
 
 /// @file
 
@@ -14,6 +12,7 @@
 @class CPTPlotSpace;
 @class CPTPlotSpaceAnnotation;
 @class CPTPlotRange;
+@class CPTTextStyle;
 
 /// @ingroup plotBindingsAllPlots
 /// @{
@@ -191,17 +190,20 @@ CPTPlotCachePrecision;
     @private
     __cpt_weak id<CPTPlotDataSource> dataSource;
     NSString *title;
+    NSAttributedString *attributedTitle;
     CPTPlotSpace *plotSpace;
     BOOL dataNeedsReloading;
     NSMutableDictionary *cachedData;
     NSUInteger cachedDataCount;
     CPTPlotCachePrecision cachePrecision;
     BOOL needsRelabel;
+    BOOL adjustLabelAnchors;
+    BOOL showLabels;
     CGFloat labelOffset;
     CGFloat labelRotation;
     NSUInteger labelField;
     CPTTextStyle *labelTextStyle;
-    NSNumberFormatter *labelFormatter;
+    NSFormatter *labelFormatter;
     NSRange labelIndexRange;
     NSMutableArray *labelAnnotations;
     CPTShadow *labelShadow;
@@ -216,6 +218,7 @@ CPTPlotCachePrecision;
 /// @name Identification
 /// @{
 @property (nonatomic, readwrite, copy) NSString *title;
+@property (nonatomic, readwrite, copy) NSAttributedString *attributedTitle;
 /// @}
 
 /// @name Plot Space
@@ -245,11 +248,13 @@ CPTPlotCachePrecision;
 /// @name Data Labels
 /// @{
 @property (nonatomic, readonly, assign) BOOL needsRelabel;
+@property (nonatomic, readwrite, assign) BOOL adjustLabelAnchors;
+@property (nonatomic, readwrite, assign) BOOL showLabels;
 @property (nonatomic, readwrite, assign) CGFloat labelOffset;
 @property (nonatomic, readwrite, assign) CGFloat labelRotation;
 @property (nonatomic, readwrite, assign) NSUInteger labelField;
 @property (nonatomic, readwrite, copy) CPTTextStyle *labelTextStyle;
-@property (nonatomic, readwrite, retain) NSNumberFormatter *labelFormatter;
+@property (nonatomic, readwrite, retain) NSFormatter *labelFormatter;
 @property (nonatomic, readwrite, retain) CPTShadow *labelShadow;
 /// @}
 
@@ -308,6 +313,7 @@ CPTPlotCachePrecision;
 /// @{
 -(NSUInteger)numberOfLegendEntries;
 -(NSString *)titleForLegendEntryAtIndex:(NSUInteger)idx;
+-(NSAttributedString *)attributedTitleForLegendEntryAtIndex:(NSUInteger)idx;
 -(void)drawSwatchForLegend:(CPTLegend *)legend atIndex:(NSUInteger)idx inRect:(CGRect)rect inContext:(CGContextRef)context;
 /// @}
 

@@ -3,10 +3,10 @@
 
 // cache common values to improve performance
 
-#define kCacheSize 3 ///< @hideinitializer The size of the decimal number cache used by various utility functions.
+#define kCacheSize 4 ///< @hideinitializer The size of the decimal number cache used by various utility functions.
 
 static NSDecimal cache[kCacheSize];
-static BOOL cacheValueInitialized[kCacheSize] = { NO, NO, NO };
+static BOOL cacheValueInitialized[kCacheSize] = { NO, NO, NO, NO };
 
 #pragma mark -
 #pragma mark Convert NSDecimal to primitive types
@@ -58,7 +58,7 @@ int64_t CPTDecimalLongLongValue(NSDecimal decimalNumber)
  **/
 int CPTDecimalIntValue(NSDecimal decimalNumber)
 {
-    return (int)[[NSDecimalNumber decimalNumberWithDecimal:decimalNumber] intValue];
+    return [[NSDecimalNumber decimalNumberWithDecimal:decimalNumber] intValue];
 }
 
 /**
@@ -118,7 +118,7 @@ uint64_t CPTDecimalUnsignedLongLongValue(NSDecimal decimalNumber)
  **/
 unsigned int CPTDecimalUnsignedIntValue(NSDecimal decimalNumber)
 {
-    return (unsigned int)[[NSDecimalNumber decimalNumberWithDecimal:decimalNumber] unsignedIntValue];
+    return [[NSDecimalNumber decimalNumberWithDecimal:decimalNumber] unsignedIntValue];
 }
 
 /**
@@ -138,7 +138,7 @@ NSUInteger CPTDecimalUnsignedIntegerValue(NSDecimal decimalNumber)
  **/
 float CPTDecimalFloatValue(NSDecimal decimalNumber)
 {
-    return (float)[[NSDecimalNumber decimalNumberWithDecimal:decimalNumber] floatValue];
+    return [[NSDecimalNumber decimalNumberWithDecimal:decimalNumber] floatValue];
 }
 
 /**
@@ -148,7 +148,7 @@ float CPTDecimalFloatValue(NSDecimal decimalNumber)
  **/
 double CPTDecimalDoubleValue(NSDecimal decimalNumber)
 {
-    return (double)[[NSDecimalNumber decimalNumberWithDecimal:decimalNumber] doubleValue];
+    return [[NSDecimalNumber decimalNumberWithDecimal:decimalNumber] doubleValue];
 }
 
 /**
@@ -173,7 +173,7 @@ CGFloat CPTDecimalCGFloatValue(NSDecimal decimalNumber)
  **/
 NSString *CPTDecimalStringValue(NSDecimal decimalNumber)
 {
-    return (NSString *)[[NSDecimalNumber decimalNumberWithDecimal:decimalNumber] stringValue];
+    return [[NSDecimalNumber decimalNumberWithDecimal:decimalNumber] stringValue];
 }
 
 #pragma mark -
@@ -573,6 +573,53 @@ NSDecimal CPTDecimalNaN(void)
     return [[NSDecimalNumber notANumber] decimalValue];
 }
 
+/**
+ *  @brief Determines the smaller of two @ref NSDecimal values.
+ *  @param leftOperand The first value to compare.
+ *  @param rightOperand The second value to compare.
+ *  @return The smaller of the two arguments.
+ **/
+NSDecimal CPTDecimalMin(NSDecimal leftOperand, NSDecimal rightOperand)
+{
+    if ( NSDecimalCompare(&leftOperand, &rightOperand) == NSOrderedAscending ) {
+        return leftOperand;
+    }
+    else {
+        return rightOperand;
+    }
+}
+
+/**
+ *  @brief Determines the larger of two @ref NSDecimal values.
+ *  @param leftOperand The first value to compare.
+ *  @param rightOperand The second value to compare.
+ *  @return The larger of the two arguments.
+ **/
+NSDecimal CPTDecimalMax(NSDecimal leftOperand, NSDecimal rightOperand)
+{
+    if ( NSDecimalCompare(&leftOperand, &rightOperand) == NSOrderedDescending ) {
+        return leftOperand;
+    }
+    else {
+        return rightOperand;
+    }
+}
+
+/**
+ *  @brief Determines the absolute value of an @ref NSDecimal value.
+ *  @param value The input value for the calculation.
+ *  @return The absolute value of the argument.
+ **/
+NSDecimal CPTDecimalAbs(NSDecimal value)
+{
+    if ( CPTDecimalGreaterThanOrEqualTo( value, CPTDecimalFromInteger(0) ) ) {
+        return value;
+    }
+    else {
+        return CPTDecimalMultiply( value, CPTDecimalFromInteger(-1) );
+    }
+}
+
 #pragma mark -
 #pragma mark Ranges
 
@@ -600,7 +647,7 @@ NSRange CPTExpandedRange(NSRange range, NSInteger expandBy)
 /**
  *  @brief Extracts the color information from a @ref CGColorRef and returns it as a CPTRGBAColor.
  *
- *  Supports RGBA and grayscale colorspaces.
+ *  Supports RGBA and grayscale color spaces.
  *
  *  @param color The color.
  *  @return The RGBA components of the color.
@@ -670,7 +717,7 @@ CGPoint CPTAlignPointToUserSpace(CGContextRef context, CGPoint point)
 #if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
     point.y = round( point.y - CPTFloat(0.5) ) + CPTFloat(0.5);
 #else
-    point.y = -floor(-point.y) - CPTFloat(0.5);
+    point.y = ceil(point.y) - CPTFloat(0.5);
 #endif
 
     // Convert the device aligned coordinate back to user space.
@@ -726,8 +773,8 @@ CGRect CPTAlignRectToUserSpace(CGContextRef context, CGRect rect)
     rect.size.height = round( oldOrigin.y + rect.size.height - CPTFloat(0.5) ) - rect.origin.y;
     rect.origin.y   += CPTFloat(0.5);
 #else
-    rect.origin.y    = -floor( -CGRectGetMaxY(rect) ) - CPTFloat(0.5);
-    rect.size.height = round(oldOrigin.y - rect.origin.y);
+    rect.origin.y    = ceil( CGRectGetMaxY(rect) ) - CPTFloat(0.5);
+    rect.size.height = ceil(oldOrigin.y - CPTFloat(0.5) - rect.origin.y);
 #endif
 
     return CGContextConvertRectToUserSpace(context, rect);
@@ -753,7 +800,7 @@ CGPoint CPTAlignIntegralPointToUserSpace(CGContextRef context, CGPoint point)
 #if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
     point.y = round(point.y);
 #else
-    point.y = -floor( -point.y + CPTFloat(0.5) );
+    point.y = ceil( point.y - CPTFloat(0.5) );
 #endif
 
     return CGContextConvertPointToUserSpace(context, point);
@@ -782,8 +829,8 @@ CGRect CPTAlignIntegralRectToUserSpace(CGContextRef context, CGRect rect)
     rect.origin.y    = round(rect.origin.y);
     rect.size.height = round(oldOrigin.y + rect.size.height) - rect.origin.y;
 #else
-    rect.origin.y    = -floor( -CGRectGetMaxY(rect) + CPTFloat(0.5) );
-    rect.size.height = round(oldOrigin.y - rect.origin.y);
+    rect.origin.y    = ceil( CGRectGetMaxY(rect) - CPTFloat(0.5) );
+    rect.size.height = ceil(oldOrigin.y - CPTFloat(0.5) - rect.origin.y);
 #endif
 
     return CGContextConvertRectToUserSpace(context, rect);

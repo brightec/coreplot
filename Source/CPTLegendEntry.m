@@ -1,15 +1,16 @@
 #import "CPTLegendEntry.h"
 
+#import "CPTPlatformSpecificCategories.h"
 #import "CPTPlot.h"
 #import "CPTTextStyle.h"
 #import "CPTUtilities.h"
-#import "NSCoderExtensions.h"
 #import <tgmath.h>
 
 /// @cond
 @interface CPTLegendEntry()
 
 @property (nonatomic, readonly, retain) NSString *title;
+@property (nonatomic, readonly, retain) NSAttributedString *attributedTitle;
 
 @end
 
@@ -71,7 +72,7 @@
  *
  *  The initialized object will have the following properties:
  *  - @ref plot = @nil
- *  - @ref index = @num{0}
+ *  - @link CPTLegendEntry::index index @endlink = @num{0}
  *  - @ref row = @num{0}
  *  - @ref column = @num{0}
  *  - @ref textStyle = @nil
@@ -161,7 +162,25 @@
         textRect = CPTRectInset(textRect, 0.0, offset);
     }
     CPTAlignRectToUserSpace(context, textRect);
-    [self.title drawInRect:textRect withTextStyle:self.textStyle inContext:context];
+
+    NSAttributedString *styledTitle = self.attributedTitle;
+
+    if ( (styledTitle.length > 0) && [styledTitle respondsToSelector:@selector(drawInRect:)] ) {
+        [styledTitle drawInRect:textRect
+                      inContext:context];
+    }
+    else {
+        NSString *theTitle = styledTitle.string;
+
+        if ( !theTitle ) {
+            theTitle = self.title;
+        }
+
+        [theTitle drawInRect:textRect
+               withTextStyle:self.textStyle
+                   inContext:context];
+    }
+
 #if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
     CGContextRestoreGState(context);
 #endif
@@ -172,28 +191,40 @@
 
 /// @cond
 
--(void)setTextStyle:(CPTTextStyle *)newTextStyle
-{
-    if ( newTextStyle != textStyle ) {
-        [textStyle release];
-        textStyle = [newTextStyle retain];
-    }
-}
-
 -(NSString *)title
 {
     return [self.plot titleForLegendEntryAtIndex:self.index];
+}
+
+-(NSAttributedString *)attributedTitle
+{
+    return [self.plot attributedTitleForLegendEntryAtIndex:self.index];
 }
 
 -(CGSize)titleSize
 {
     CGSize theTitleSize = CGSizeZero;
 
-    NSString *theTitle         = self.title;
-    CPTTextStyle *theTextStyle = self.textStyle;
+    NSAttributedString *styledTitle = self.attributedTitle;
 
-    if ( theTitle && theTextStyle ) {
-        theTitleSize = [theTitle sizeWithTextStyle:theTextStyle];
+    if ( (styledTitle.length > 0) && [styledTitle respondsToSelector:@selector(size)] ) {
+#if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
+        theTitleSize = styledTitle.size;
+#else
+        theTitleSize = NSSizeToCGSize(styledTitle.size);
+#endif
+    }
+    else {
+        NSString *theTitle = styledTitle.string;
+        if ( !theTitle ) {
+            theTitle = self.title;
+        }
+
+        CPTTextStyle *theTextStyle = self.textStyle;
+
+        if ( theTitle && theTextStyle ) {
+            theTitleSize = [theTitle sizeWithTextStyle:theTextStyle];
+        }
     }
 
     return theTitleSize;
